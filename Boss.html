@@ -1,0 +1,3270 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EASY TASK Admin Panel | Control Center</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <!-- EmailJS for password reset emails -->
+    <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; }
+        .sidebar-link.active { background-color: #3b82f6; color: white; }
+        .loader { border-top-color: #3498db; animation: spinner 1.5s linear infinite; }
+        @keyframes spinner { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .hidden { display: none; }
+        .password-field { font-family: monospace; letter-spacing: 1px; }
+        .modal-overlay { background-color: rgba(0, 0, 0, 0.5); }
+        .tabs { border-bottom: 2px solid #e5e7eb; }
+        .tab { padding: 10px 20px; cursor: pointer; border-bottom: 2px solid transparent; }
+        .tab.active { border-bottom-color: #3b82f6; color: #3b82f6; font-weight: 600; }
+        .slider-preview { height: 120px; object-fit: cover; }
+        .sortable-item { cursor: move; }
+        .sortable-item:hover { background-color: #f9fafb; }
+        .blocked-user-row { background-color: #fee2e2; }
+        .blocked-user-row:hover { background-color: #fecaca; }
+        .verified-badge { background-color: #10b981; color: white; }
+        .unverified-badge { background-color: #f59e0b; color: white; }
+        .verification-pending { background-color: #3b82f6; color: white; }
+        /* Verification specific styles */
+        .verification-required { 
+            background: linear-gradient(135deg, #fef3c7, #fde68a);
+            border-left: 4px solid #f59e0b;
+        }
+        .verification-approved { 
+            background: linear-gradient(135deg, #d1fae5, #a7f3d0);
+            border-left: 4px solid #10b981;
+        }
+        .verification-rejected { 
+            background: linear-gradient(135deg, #fee2e2, #fecaca);
+            border-left: 4px solid #ef4444;
+        }
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-track { background: #f1f1f1; }
+        ::-webkit-scrollbar-thumb { background: #888; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #555; }
+        /* Dashboard stats */
+        .stat-card { transition: transform 0.3s ease; }
+        .stat-card:hover { transform: translateY(-5px); }
+        /* Login error styling */
+        .login-error { animation: shake 0.5s ease-in-out; }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+        /* Responsive for mobile */
+        @media (max-width: 768px) {
+            main { margin-left: 0 !important; padding: 1rem !important; }
+            aside { transform: translateX(-100%); z-index: 50; }
+            aside.active { transform: translateX(0); }
+            .mobile-menu-btn { display: block !important; }
+            .grid-cols-1, .grid-cols-2, .grid-cols-4 { grid-template-columns: 1fr !important; }
+            .page { overflow-x: auto; }
+            table { font-size: 12px; }
+            .text-2xl { font-size: 1.5rem !important; }
+            .text-xl { font-size: 1.25rem !important; }
+            .p-8 { padding: 1rem !important; }
+            .px-6 { padding-left: 1rem !important; padding-right: 1rem !important; }
+            .py-4 { padding-top: 0.5rem !important; padding-bottom: 0.5rem !important; }
+        }
+        .mobile-menu-btn { display: none; position: fixed; top: 1rem; left: 1rem; z-index: 60; }
+    </style>
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
+</head>
+<body class="text-gray-800">
+
+    <!-- LOGIN OVERLAY -->
+    <div id="login-screen" class="fixed inset-0 bg-gray-900 flex items-center justify-center z-[100]">
+        <div class="bg-white p-8 rounded-xl shadow-2xl w-full max-w-md mx-4">
+            <div class="text-center mb-8">
+                <h1 class="text-3xl font-bold text-blue-600">Admin Login</h1>
+                <p class="text-gray-500">PTC Application Management</p>
+            </div>
+            <div class="space-y-4">
+                <!-- EMAIL AND PASSWORD FIELDS EMPTY AS REQUESTED -->
+                <input type="email" id="login-email" placeholder="Admin Email" class="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                <input type="password" id="login-pass" placeholder="Password" class="w-full px-4 py-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none">
+                <button onclick="handleLogin()" id="login-btn" class="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition">Login to Dashboard</button>
+            </div>
+            <p id="login-error" class="text-red-500 mt-4 text-center text-sm login-error hidden"></p>
+        </div>
+    </div>
+
+    <!-- MOBILE MENU BUTTON -->
+    <button id="mobile-menu-btn" class="mobile-menu-btn bg-blue-600 text-white p-3 rounded-lg">
+        <i class="fas fa-bars"></i>
+    </button>
+
+    <!-- MAIN DASHBOARD LAYOUT -->
+    <div id="admin-content" class="flex min-h-screen hidden">
+        <!-- SIDEBAR -->
+        <aside id="sidebar" class="w-64 bg-white shadow-md fixed h-full transition-all duration-300 overflow-y-auto z-40">
+            <div class="p-6">
+                <h2 class="text-xl font-bold text-blue-600 flex items-center">
+                    <i class="fas fa-shield-halved mr-2"></i> PTC ADMIN
+                </h2>
+                <p class="text-xs text-gray-500 mt-1">Created by Tanjid Islam</p>
+            </div>
+            <nav class="mt-2">
+                <a href="#" onclick="showPage('dashboard')" class="sidebar-link active flex items-center px-6 py-3 text-gray-600 hover:bg-blue-50 transition" id="link-dashboard">
+                    <i class="fas fa-home mr-3 w-5"></i> Dashboard
+                </a>
+                <a href="#" onclick="showPage('users')" class="sidebar-link flex items-center px-6 py-3 text-gray-600 hover:bg-blue-50 transition" id="link-users">
+                    <i class="fas fa-users mr-3 w-5"></i> Users
+                </a>
+                <a href="#" onclick="showPage('passwords')" class="sidebar-link flex items-center px-6 py-3 text-gray-600 hover:bg-blue-50 transition" id="link-passwords">
+                    <i class="fas fa-key mr-3 w-5"></i> User Passwords
+                </a>
+                <a href="#" onclick="showPage('tasks')" class="sidebar-link flex items-center px-6 py-3 text-gray-600 hover:bg-blue-50 transition" id="link-tasks">
+                    <i class="fas fa-tasks mr-3 w-5"></i> Task Management
+                </a>
+                <a href="#" onclick="showPage('withdrawals')" class="sidebar-link flex items-center px-6 py-3 text-gray-600 hover:bg-blue-50 transition" id="link-withdrawals">
+                    <i class="fas fa-wallet mr-3 w-5"></i> Withdrawals <span id="pending-badge" class="ml-auto bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full hidden">0</span>
+                </a>
+                <a href="#" onclick="showPage('verification')" class="sidebar-link flex items-center px-6 py-3 text-gray-600 hover:bg-blue-50 transition" id="link-verification">
+                    <i class="fas fa-id-card mr-3 w-5"></i> ID Verification <span id="verification-badge" class="ml-auto bg-blue-500 text-white text-[10px] px-2 py-0.5 rounded-full hidden">0</span>
+                </a>
+                <a href="#" onclick="showPage('slider')" class="sidebar-link flex items-center px-6 py-3 text-gray-600 hover:bg-blue-50 transition" id="link-slider">
+                    <i class="fas fa-images mr-3 w-5"></i> Slider Management
+                </a>
+                <a href="#" onclick="showPage('payment')" class="sidebar-link flex items-center px-6 py-3 text-gray-600 hover:bg-blue-50 transition" id="link-payment">
+                    <i class="fas fa-credit-card mr-3 w-5"></i> Payment Methods
+                </a>
+                <a href="#" onclick="showPage('support')" class="sidebar-link flex items-center px-6 py-3 text-gray-600 hover:bg-blue-50 transition" id="link-support">
+                    <i class="fas fa-headset mr-3 w-5"></i> Support Settings
+                </a>
+                <a href="#" onclick="showPage('settings')" class="sidebar-link flex items-center px-6 py-3 text-gray-600 hover:bg-blue-50 transition" id="link-settings">
+                    <i class="fas fa-cog mr-3 w-5"></i> Global Settings
+                </a>
+                <a href="#" onclick="showPage('notices')" class="sidebar-link flex items-center px-6 py-3 text-gray-600 hover:bg-blue-50 transition" id="link-notices">
+                    <i class="fas fa-bullhorn mr-3 w-5"></i> Notices
+                </a>
+                <hr class="my-4">
+                <button onclick="handleLogout()" class="w-full flex items-center px-6 py-3 text-red-500 hover:bg-red-50 transition">
+                    <i class="fas fa-sign-out-alt mr-3 w-5"></i> Logout
+                </button>
+            </nav>
+        </aside>
+
+        <!-- MAIN CONTENT AREA -->
+        <main class="flex-1 ml-64 p-8 transition-all duration-300" id="main-content">
+            <!-- PAGE: DASHBOARD -->
+            <section id="page-dashboard" class="page">
+                <h2 class="text-2xl font-bold mb-6">Dashboard Overview</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                    <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-blue-500 stat-card">
+                        <p class="text-gray-500 text-sm">Total Users</p>
+                        <h3 class="text-2xl font-bold" id="stat-total-users">0</h3>
+                        <div class="text-xs text-gray-400 mt-2">
+                            <i class="fas fa-user-plus mr-1"></i> Active accounts
+                        </div>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-green-500 stat-card">
+                        <p class="text-gray-500 text-sm">Verified Users</p>
+                        <h3 class="text-2xl font-bold" id="stat-verified-users">0</h3>
+                        <div class="text-xs text-gray-400 mt-2">
+                            <i class="fas fa-check-circle mr-1"></i> ID Verified
+                        </div>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-yellow-500 stat-card">
+                        <p class="text-gray-500 text-sm">Pending Withdrawals</p>
+                        <h3 class="text-2xl font-bold" id="stat-pending-withdrawals">0</h3>
+                        <div class="text-xs text-gray-400 mt-2">
+                            <i class="fas fa-clock mr-1"></i> Awaiting approval
+                        </div>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm border-l-4 border-purple-500 stat-card">
+                        <p class="text-gray-500 text-sm">Verification Requests</p>
+                        <h3 class="text-2xl font-bold" id="stat-verification-requests">0</h3>
+                        <div class="text-xs text-gray-400 mt-2">
+                            <i class="fas fa-id-card mr-1"></i> Need review
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+                    <div class="bg-white p-4 rounded-xl shadow-sm">
+                        <h3 class="text-lg font-semibold mb-4">Earning Performance</h3>
+                        <canvas id="earningsChart" height="150"></canvas>
+                    </div>
+                    <div class="bg-white p-4 rounded-xl shadow-sm">
+                        <h3 class="text-lg font-semibold mb-4">Verification Status</h3>
+                        <canvas id="verificationChart" height="150"></canvas>
+                    </div>
+                </div>
+
+                <div class="bg-white p-4 rounded-xl shadow-sm">
+                    <h3 class="text-lg font-semibold mb-4">Quick Actions</h3>
+                    <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <button onclick="showPage('users')" class="p-3 bg-blue-50 text-blue-700 rounded-lg hover:bg-blue-100 transition">
+                            <i class="fas fa-users text-lg mb-2"></i>
+                            <div class="font-semibold text-sm">Manage Users</div>
+                        </button>
+                        <button onclick="showPage('withdrawals')" class="p-3 bg-green-50 text-green-700 rounded-lg hover:bg-green-100 transition">
+                            <i class="fas fa-wallet text-lg mb-2"></i>
+                            <div class="font-semibold text-sm">Withdrawals</div>
+                        </button>
+                        <button onclick="showPage('verification')" class="p-3 bg-purple-50 text-purple-700 rounded-lg hover:bg-purple-100 transition">
+                            <i class="fas fa-id-card text-lg mb-2"></i>
+                            <div class="font-semibold text-sm">ID Verification</div>
+                        </button>
+                        <button onclick="showPage('settings')" class="p-3 bg-gray-50 text-gray-700 rounded-lg hover:bg-gray-100 transition">
+                            <i class="fas fa-cog text-lg mb-2"></i>
+                            <div class="font-semibold text-sm">Settings</div>
+                        </button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PAGE: USERS -->
+            <section id="page-users" class="page hidden">
+                <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                    <h2 class="text-2xl font-bold">User Management</h2>
+                    <div class="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+                        <div class="relative w-full md:w-64">
+                            <input type="text" id="user-search" onkeyup="searchUsers()" placeholder="Search Name/Email/UID..." class="pl-10 pr-4 py-2 border rounded-lg w-full focus:ring-2 focus:ring-blue-500 outline-none">
+                            <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+                        </div>
+                        <select id="user-filter" onchange="loadUsers()" class="border p-2 rounded-lg w-full md:w-auto">
+                            <option value="all">All Users</option>
+                            <option value="verified">Verified Only</option>
+                            <option value="unverified">Unverified Only</option>
+                            <option value="active">Active Only</option>
+                            <option value="blocked">Blocked Only</option>
+                            <option value="verification_pending">Verification Pending</option>
+                        </select>
+                        <button onclick="exportUsers()" class="bg-green-600 text-white px-4 py-2 rounded-lg hover:bg-green-700 w-full md:w-auto">
+                            <i class="fas fa-download mr-2"></i> Export Users
+                        </button>
+                    </div>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+                    <table class="w-full text-left min-w-full">
+                        <thead class="bg-gray-50 border-b">
+                            <tr>
+                                <th class="px-4 py-3 font-semibold text-sm">User Details</th>
+                                <th class="px-4 py-3 font-semibold text-sm">Wallet</th>
+                                <th class="px-4 py-3 font-semibold text-sm">Verification</th>
+                                <th class="px-4 py-3 font-semibold text-sm">Status</th>
+                                <th class="px-4 py-3 font-semibold text-sm">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="users-table-body">
+                            <!-- User rows inject here -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- PAGE: USER PASSWORDS -->
+            <section id="page-passwords" class="page hidden">
+                <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                    <h2 class="text-2xl font-bold">User Password Management</h2>
+                    <div class="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+                        <div class="relative w-full md:w-64">
+                            <input type="text" id="password-search" onkeyup="searchPasswords()" placeholder="Search by Email..." class="pl-10 pr-4 py-2 border rounded-lg w-full focus:ring-2 focus:ring-blue-500 outline-none">
+                            <i class="fas fa-search absolute left-3 top-3 text-gray-400"></i>
+                        </div>
+                        <div class="text-sm text-gray-500">
+                            <i class="fas fa-info-circle mr-1"></i> Total: <span id="total-passwords">0</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <!-- Tabs -->
+                <div class="tabs mb-6">
+                    <div class="flex space-x-1 overflow-x-auto">
+                        <div class="tab active whitespace-nowrap" onclick="showPasswordTab('all')" id="tab-all">
+                            All Users
+                        </div>
+                        <div class="tab whitespace-nowrap" onclick="showPasswordTab('reset')" id="tab-reset">
+                            Password Reset Requests <span id="reset-count-badge" class="ml-2 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full hidden">0</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+                    <table class="w-full text-left min-w-full">
+                        <thead class="bg-gray-50 border-b">
+                            <tr>
+                                <th class="px-4 py-3 font-semibold text-sm">User Information</th>
+                                <th class="px-4 py-3 font-semibold text-sm">Email & Password</th>
+                                <th class="px-4 py-3 font-semibold text-sm">Reset Requests</th>
+                                <th class="px-4 py-3 font-semibold text-sm">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="passwords-table-body">
+                            <!-- Password rows inject here -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- PAGE: TASKS -->
+            <section id="page-tasks" class="page hidden">
+                <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                    <h2 class="text-2xl font-bold">Manage Tasks</h2>
+                    <button onclick="openTaskModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 w-full md:w-auto">
+                        <i class="fas fa-plus mr-2"></i> Add New Task
+                    </button>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4" id="tasks-container">
+                    <!-- Task cards inject here -->
+                </div>
+            </section>
+
+            <!-- PAGE: WITHDRAWALS -->
+            <section id="page-withdrawals" class="page hidden">
+                <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                    <h2 class="text-2xl font-bold">Withdrawal Requests</h2>
+                    <select id="withdraw-filter" onchange="loadWithdrawals()" class="border p-2 rounded-lg w-full md:w-auto">
+                        <option value="Pending">Pending Only</option>
+                        <option value="Approved">Approved</option>
+                        <option value="Rejected">Rejected</option>
+                        <option value="All">All Requests</option>
+                    </select>
+                </div>
+                <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+                    <table class="w-full text-left min-w-full">
+                        <thead class="bg-gray-50 border-b">
+                            <tr>
+                                <th class="px-4 py-3 font-semibold text-sm">User & Date</th>
+                                <th class="px-4 py-3 font-semibold text-sm">Amount/Method</th>
+                                <th class="px-4 py-3 font-semibold text-sm">Payment Number</th>
+                                <th class="px-4 py-3 font-semibold text-sm">Status</th>
+                                <th class="px-4 py-3 font-semibold text-sm text-center">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="withdraw-table-body">
+                            <!-- Withdraw rows inject here -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- PAGE: ID VERIFICATION -->
+            <section id="page-verification" class="page hidden">
+                <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                    <h2 class="text-2xl font-bold">ID Verification Management</h2>
+                    <div class="flex flex-col md:flex-row items-center gap-4 w-full md:w-auto">
+                        <select id="verification-filter" onchange="loadVerificationRequests()" class="border p-2 rounded-lg w-full md:w-auto">
+                            <option value="pending">Pending Requests</option>
+                            <option value="approved">Approved</option>
+                            <option value="rejected">Rejected</option>
+                            <option value="all">All Requests</option>
+                        </select>
+                        <button onclick="openVerificationSettingsModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 w-full md:w-auto">
+                            <i class="fas fa-cog mr-2"></i> Verification Settings
+                        </button>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <!-- Verification Requests Table -->
+                    <div class="md:col-span-2">
+                        <div class="bg-white rounded-xl shadow-sm overflow-x-auto">
+                            <div class="p-4 border-b bg-gray-50">
+                                <h3 class="font-semibold">Verification Requests</h3>
+                            </div>
+                            <table class="w-full text-left min-w-full">
+                                <thead class="bg-gray-50 border-b">
+                                    <tr>
+                                        <th class="px-4 py-3 font-semibold text-sm">User Details</th>
+                                        <th class="px-4 py-3 font-semibold text-sm">Payment Info</th>
+                                        <th class="px-4 py-3 font-semibold text-sm">Status</th>
+                                        <th class="px-4 py-3 font-semibold text-sm">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="verification-table-body">
+                                    <!-- Verification rows inject here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+
+                    <!-- Verification Stats & Settings -->
+                    <div class="space-y-4">
+                        <!-- Stats -->
+                        <div class="bg-white p-4 rounded-xl shadow-sm">
+                            <h3 class="font-bold text-lg mb-4 border-b pb-2">Verification Stats</h3>
+                            <div class="space-y-4">
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-600">Verification Fee</span>
+                                    <span class="font-bold text-blue-600" id="verification-fee-display">৳ 50</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-600">Payment Number</span>
+                                    <span class="font-mono font-bold" id="payment-number-display">01XXXXXXXXX</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-600">Total Verified</span>
+                                    <span class="font-bold text-green-600" id="total-verified-display">0</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-600">Pending Requests</span>
+                                    <span class="font-bold text-yellow-600" id="pending-requests-display">0</span>
+                                </div>
+                                <div class="flex justify-between items-center">
+                                    <span class="text-gray-600">Total Earnings</span>
+                                    <span class="font-bold text-purple-600" id="verification-earnings">৳ 0</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Quick Actions -->
+                        <div class="bg-white p-4 rounded-xl shadow-sm">
+                            <h3 class="font-bold text-lg mb-4 border-b pb-2">Quick Actions</h3>
+                            <div class="space-y-3">
+                                <button onclick="openVerificationSettingsModal()" class="w-full text-left p-3 border rounded-lg hover:bg-gray-50 transition">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-money-bill-wave text-green-500 mr-3"></i>
+                                        <div>
+                                            <div class="font-medium">Update Fee & Number</div>
+                                            <div class="text-xs text-gray-500">Change verification settings</div>
+                                        </div>
+                                    </div>
+                                </button>
+                                <button onclick="exportVerificationData()" class="w-full text-left p-3 border rounded-lg hover:bg-gray-50 transition">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-file-export text-blue-500 mr-3"></i>
+                                        <div>
+                                            <div class="font-medium">Export Data</div>
+                                            <div class="text-xs text-gray-500">Download verification records</div>
+                                        </div>
+                                    </div>
+                                </button>
+                                <button onclick="viewAllVerifiedUsers()" class="w-full text-left p-3 border rounded-lg hover:bg-gray-50 transition">
+                                    <div class="flex items-center">
+                                        <i class="fas fa-check-circle text-green-500 mr-3"></i>
+                                        <div>
+                                            <div class="font-medium">View Verified Users</div>
+                                            <div class="text-xs text-gray-500">See all verified accounts</div>
+                                        </div>
+                                    </div>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PAGE: SLIDER MANAGEMENT -->
+            <section id="page-slider" class="page hidden">
+                <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                    <h2 class="text-2xl font-bold">Homepage Slider Management</h2>
+                    <button onclick="openSliderModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 w-full md:w-auto">
+                        <i class="fas fa-plus mr-2"></i> Add New Slide
+                    </button>
+                </div>
+
+                <div class="mb-6">
+                    <div class="flex flex-col md:flex-row items-center justify-between mb-4 gap-2">
+                        <h3 class="text-lg font-semibold">Current Slides</h3>
+                        <div class="text-sm text-gray-500">
+                            <span id="active-slider-count">0</span> active slides
+                        </div>
+                    </div>
+                    <div class="bg-white rounded-xl shadow-sm p-4">
+                        <div id="slider-container" class="space-y-4">
+                            <!-- Slider items will be loaded here -->
+                            <div class="text-center py-8 text-gray-400" id="empty-slider-message">
+                                No slides added yet. Click "Add New Slide" to get started.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-white p-4 rounded-xl shadow-sm">
+                        <h3 class="font-bold text-lg mb-4 border-b pb-2">Slider Settings</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Auto Slide Interval (seconds)</label>
+                                <input type="number" id="slider-interval" class="w-full mt-1 border p-2 rounded-lg" value="4" min="2" max="10">
+                                <p class="text-xs text-gray-500 mt-1">Time between automatic slide transitions</p>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span>Enable Auto Slide</span>
+                                <input type="checkbox" id="slider-auto-play" class="w-5 h-5" checked>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span>Show Dots Navigation</span>
+                                <input type="checkbox" id="slider-show-dots" class="w-5 h-5" checked>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span>Show Arrows Navigation</span>
+                                <input type="checkbox" id="slider-show-arrows" class="w-5 h-5" checked>
+                            </div>
+                        </div>
+                        <button onclick="saveSliderSettings()" class="w-full mt-6 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700">
+                            Save Slider Settings
+                        </button>
+                    </div>
+
+                    <div class="bg-white p-4 rounded-xl shadow-sm">
+                        <h3 class="font-bold text-lg mb-4 border-b pb-2 text-blue-600">Instructions</h3>
+                        <div class="space-y-3 text-sm text-gray-600">
+                            <div class="flex items-start">
+                                <i class="fas fa-drag-handle mt-1 mr-2 text-blue-500"></i>
+                                <span>Drag and drop slides to reorder them</span>
+                            </div>
+                            <div class="flex items-start">
+                                <i class="fas fa-toggle-on mt-1 mr-2 text-green-500"></i>
+                                <span>Toggle active status to show/hide slides</span>
+                            </div>
+                            <div class="flex items-start">
+                                <i class="fas fa-image mt-1 mr-2 text-purple-500"></i>
+                                <span>Recommended image size: 1200x400 pixels</span>
+                            </div>
+                            <div class="flex items-start">
+                                <i class="fas fa-link mt-1 mr-2 text-red-500"></i>
+                                <span>Links should start with http:// or https://</span>
+                            </div>
+                        </div>
+                        <div class="mt-6 p-3 bg-blue-50 rounded-lg border border-blue-200">
+                            <h4 class="font-semibold text-blue-800 mb-2">Preview Current Slider</h4>
+                            <div class="slider-preview-container h-40 bg-gray-100 rounded-lg overflow-hidden relative">
+                                <div id="slider-preview" class="h-full flex transition-transform duration-500">
+                                    <!-- Preview slides will be loaded here -->
+                                </div>
+                                <div id="slider-preview-dots" class="absolute bottom-2 left-0 right-0 flex justify-center space-x-1">
+                                    <!-- Dots will be loaded here -->
+                                </div>
+                            </div>
+                            <button onclick="previewSlider()" class="w-full mt-3 bg-blue-100 text-blue-700 py-2 rounded-lg hover:bg-blue-200">
+                                <i class="fas fa-sync-alt mr-2"></i> Refresh Preview
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PAGE: PAYMENT METHODS -->
+            <section id="page-payment" class="page hidden">
+                <div class="flex flex-col md:flex-row justify-between items-center mb-6 gap-4">
+                    <h2 class="text-2xl font-bold">Payment Methods Management</h2>
+                    <button onclick="openPaymentModal()" class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 w-full md:w-auto">
+                        <i class="fas fa-plus mr-2"></i> Add Payment Method
+                    </button>
+                </div>
+
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div class="bg-white p-4 rounded-xl shadow-sm">
+                        <h3 class="font-bold text-lg mb-4 border-b pb-2">Current Payment Methods</h3>
+                        <div id="payment-methods-list" class="space-y-3">
+                            <!-- Payment methods will be loaded here -->
+                            <p class="text-gray-500 text-center py-4">No payment methods added yet.</p>
+                        </div>
+                    </div>
+
+                    <div class="bg-white p-4 rounded-xl shadow-sm">
+                        <h3 class="font-bold text-lg mb-4 border-b pb-2 text-green-600">Payment Settings</h3>
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <span>Enable All Payment Methods</span>
+                                <input type="checkbox" id="enable-all-payments" class="w-5 h-5" checked>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Default Payment Method</label>
+                                <select id="default-payment" class="w-full mt-1 border p-2 rounded-lg">
+                                    <option value="bKash">bKash</option>
+                                    <option value="Nagad">Nagad</option>
+                                    <option value="Rocket">Rocket</option>
+                                </select>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span>Show Payment Methods in Order</span>
+                                <input type="checkbox" id="show-payment-order" class="w-5 h-5" checked>
+                            </div>
+                            <button onclick="savePaymentSettings()" class="w-full mt-4 bg-green-600 text-white py-2 rounded-lg hover:bg-green-700">
+                                Save Payment Settings
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- PAGE: SUPPORT SETTINGS -->
+            <section id="page-support" class="page hidden">
+                <h2 class="text-2xl font-bold mb-6">Support & Contact Settings</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Support Channels -->
+                    <div class="bg-white p-4 rounded-xl shadow-sm">
+                        <h3 class="font-bold text-lg mb-4 border-b pb-2">Support Channels</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Support Link/URL</label>
+                                <input type="text" id="support-link" class="w-full mt-1 border p-2 rounded-lg" placeholder="https://t.me/yourchannel or https://wa.me/...">
+                                <p class="text-xs text-gray-500 mt-1">This link will appear as a floating button in user app</p>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Support Email</label>
+                                <input type="email" id="support-email" class="w-full mt-1 border p-2 rounded-lg" placeholder="support@yourapp.com">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">WhatsApp Number</label>
+                                <input type="text" id="support-whatsapp" class="w-full mt-1 border p-2 rounded-lg" placeholder="+8801XXXXXXXXX">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Telegram Link</label>
+                                <input type="text" id="support-telegram" class="w-full mt-1 border p-2 rounded-lg" placeholder="https://t.me/yourchannel">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Facebook Page</label>
+                                <input type="text" id="support-facebook" class="w-full mt-1 border p-2 rounded-lg" placeholder="https://facebook.com/yourpage">
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Password Reset Settings -->
+                    <div class="bg-white p-4 rounded-xl shadow-sm">
+                        <h3 class="font-bold text-lg mb-4 border-b pb-2 text-blue-600">Password Reset Management</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Reset Request Email</label>
+                                <input type="email" id="reset-email" class="w-full mt-1 border p-2 rounded-lg" placeholder="admin@yourapp.com">
+                                <p class="text-xs text-gray-500 mt-1">Where password reset requests will be sent</p>
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span>Auto-Email on Reset Request</span>
+                                <input type="checkbox" id="auto-email-reset" class="w-5 h-5">
+                            </div>
+                            <div class="flex items-center justify-between">
+                                <span>Show Plain Passwords in Admin</span>
+                                <input type="checkbox" id="show-plain-passwords" class="w-5 h-5">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Password Strength Requirement</label>
+                                <select id="password-strength" class="w-full mt-1 border p-2 rounded-lg">
+                                    <option value="weak">Weak (Minimum 6 chars)</option>
+                                    <option value="medium" selected>Medium (Letters + Numbers)</option>
+                                    <option value="strong">Strong (Mixed case + Special)</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-8">
+                    <button onclick="saveSupportSettings()" class="bg-green-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-green-700 w-full md:w-auto">Save Support Settings</button>
+                </div>
+            </section>
+
+            <!-- PAGE: SETTINGS -->
+            <section id="page-settings" class="page hidden">
+                <h2 class="text-2xl font-bold mb-6">Global Application Settings</h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <!-- Coin Controls -->
+                    <div class="bg-white p-4 rounded-xl shadow-sm">
+                        <h3 class="font-bold text-lg mb-4 border-b pb-2">Coin & Rate Settings</h3>
+                        <div class="space-y-4">
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Conversion Rate (Coins = 1 BDT)</label>
+                                <input type="number" id="set-coin-rate" class="w-full mt-1 border p-2 rounded-lg" value="20">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Daily Task Limit (per user)</label>
+                                <input type="number" id="set-daily-limit" class="w-full mt-1 border p-2 rounded-lg" value="20">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Min. Withdrawal (BDT)</label>
+                                <input type="number" id="set-min-withdraw" class="w-full mt-1 border p-2 rounded-lg" value="100">
+                            </div>
+                        </div>
+                    </div>
+                    <!-- Anti-Fraud -->
+                    <div class="bg-white p-4 rounded-xl shadow-sm">
+                        <h3 class="font-bold text-lg mb-4 border-b pb-2 text-red-600">Security & Anti-Fraud</h3>
+                        <div class="space-y-4">
+                            <div class="flex items-center justify-between">
+                                <span>Block VPN/Proxy</span>
+                                <input type="checkbox" id="set-vpn-block" class="w-5 h-5" checked>
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Max Tasks Per IP / Day</label>
+                                <input type="number" id="set-ip-limit" class="w-full mt-1 border p-2 rounded-lg" value="5">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Referral Commission (%)</label>
+                                <input type="number" id="set-ref-comm" class="w-full mt-1 border p-2 rounded-lg" value="10">
+                            </div>
+                            <div>
+                                <label class="block text-sm font-medium text-gray-700">Referral Bonus (BDT)</label>
+                                <input type="number" id="set-ref-bonus" class="w-full mt-1 border p-2 rounded-lg" value="50">
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-8">
+                    <button onclick="saveSettings()" class="bg-green-600 text-white px-8 py-3 rounded-lg font-bold hover:bg-green-700 w-full md:w-auto">Save All Changes</button>
+                </div>
+            </section>
+
+            <!-- PAGE: NOTICES -->
+            <section id="page-notices" class="page hidden">
+                <h2 class="text-2xl font-bold mb-6">User Dashboard Notices</h2>
+                <div class="bg-white p-4 rounded-xl shadow-sm max-w-2xl mx-auto">
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block font-medium">Notice Message</label>
+                            <textarea id="notice-text" rows="4" class="w-full mt-1 border p-2 rounded-lg" placeholder="Enter message for users..."></textarea>
+                        </div>
+                        <div class="flex flex-col md:flex-row items-center gap-4">
+                            <label class="flex items-center gap-2">
+                                <input type="checkbox" id="notice-active" class="w-5 h-5"> <span>Show Notice</span>
+                            </label>
+                            <label class="flex items-center gap-2">
+                                <input type="checkbox" id="notice-emergency" class="w-5 h-5"> <span class="text-red-600 font-bold underline">Emergency Alert</span>
+                            </label>
+                        </div>
+                        <button onclick="updateNotice()" class="bg-blue-600 text-white px-6 py-2 rounded-lg w-full md:w-auto">Publish Notice</button>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- TASK MODAL -->
+    <div id="task-modal" class="fixed inset-0 modal-overlay flex items-center justify-center z-[110] hidden">
+        <div class="bg-white rounded-xl w-full max-w-lg mx-4 p-4">
+            <h3 id="modal-title" class="text-xl font-bold mb-4">Add New Task</h3>
+            <div class="grid grid-cols-2 gap-4">
+                <div class="col-span-2">
+                    <label class="text-xs font-bold uppercase text-gray-500">Task Title</label>
+                    <input type="text" id="task-title" class="w-full border p-2 rounded-lg">
+                </div>
+                <div>
+                    <label class="text-xs font-bold uppercase text-gray-500">Type</label>
+                    <select id="task-type" class="w-full border p-2 rounded-lg">
+                        <option value="Web Visit">Web Visit</option>
+                        <option value="Video">Video Task</option>
+                        <option value="Quiz">Quiz</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="text-xs font-bold uppercase text-gray-500">Reward (Coins)</label>
+                    <input type="number" id="task-reward" class="w-full border p-2 rounded-lg">
+                </div>
+                <div>
+                    <label class="text-xs font-bold uppercase text-gray-500">Timer (Sec)</label>
+                    <input type="number" id="task-timer" class="w-full border p-2 rounded-lg">
+                </div>
+                <div>
+                    <label class="text-xs font-bold uppercase text-gray-500">Limit / User</label>
+                    <input type="number" id="task-limit" class="w-full border p-2 rounded-lg">
+                </div>
+                <div class="col-span-2">
+                    <label class="text-xs font-bold uppercase text-gray-500">URL / Link</label>
+                    <input type="text" id="task-url" class="w-full border p-2 rounded-lg" placeholder="https://example.com">
+                </div>
+                <div class="col-span-2">
+                    <label class="text-xs font-bold uppercase text-gray-500">Description</label>
+                    <textarea id="task-description" class="w-full border p-2 rounded-lg" rows="2" placeholder="Task description for users"></textarea>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button onclick="closeTaskModal()" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                <button onclick="saveTask()" class="px-4 py-2 bg-blue-600 text-white rounded-lg">Save Task</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- SLIDER MODAL -->
+    <div id="slider-modal" class="fixed inset-0 modal-overlay flex items-center justify-center z-[110] hidden">
+        <div class="bg-white rounded-xl w-full max-w-lg mx-4 p-4 max-h-[90vh] overflow-y-auto">
+            <h3 id="slider-modal-title" class="text-xl font-bold mb-4">Add New Slider</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Slide Title</label>
+                    <input type="text" id="slider-title" class="w-full border p-2 rounded-lg" placeholder="Enter slide title">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Slide Description</label>
+                    <textarea id="slider-description" class="w-full border p-2 rounded-lg" rows="2" placeholder="Enter slide description"></textarea>
+                </div>
+                <div class="grid grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Button Text</label>
+                        <input type="text" id="slider-button-text" class="w-full border p-2 rounded-lg" placeholder="e.g., Learn More">
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Button Link</label>
+                        <input type="text" id="slider-button-link" class="w-full border p-2 rounded-lg" placeholder="https://example.com">
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Image URL</label>
+                    <input type="text" id="slider-image-url" class="w-full border p-2 rounded-lg" placeholder="https://images.unsplash.com/photo-...">
+                    <p class="text-xs text-gray-500 mt-1">Enter direct image URL or Unsplash link</p>
+                    <div class="mt-2 grid grid-cols-3 gap-2">
+                        <button type="button" onclick="setSampleImage(1)" class="text-xs border p-1 rounded hover:bg-gray-50">Sample 1</button>
+                        <button type="button" onclick="setSampleImage(2)" class="text-xs border p-1 rounded hover:bg-gray-50">Sample 2</button>
+                        <button type="button" onclick="setSampleImage(3)" class="text-xs border p-1 rounded hover:bg-gray-50">Sample 3</button>
+                    </div>
+                </div>
+                <div class="image-preview mt-2">
+                    <img id="slider-image-preview" src="" alt="Preview" class="w-full h-32 object-cover rounded-lg border hidden">
+                </div>
+                <div class="flex items-center justify-between pt-2">
+                    <div class="flex items-center">
+                        <input type="checkbox" id="slider-active" class="w-4 h-4 mr-2" checked>
+                        <label for="slider-active" class="text-sm">Active (Show in slider)</label>
+                    </div>
+                    <div class="text-sm text-gray-500">
+                        Order: <span id="slider-order-display">Auto</span>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button onclick="closeSliderModal()" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                <button onclick="saveSlider()" class="px-4 py-2 bg-blue-600 text-white rounded-lg">Save Slide</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PAYMENT METHOD MODAL -->
+    <div id="payment-modal" class="fixed inset-0 modal-overlay flex items-center justify-center z-[110] hidden">
+        <div class="bg-white rounded-xl w-full max-w-md mx-4 p-4">
+            <h3 id="payment-modal-title" class="text-xl font-bold mb-4">Add Payment Method</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Payment Method Name</label>
+                    <input type="text" id="payment-name" class="w-full border p-2 rounded-lg" placeholder="e.g., bKash, Nagad, Rocket">
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Icon URL</label>
+                    <input type="text" id="payment-icon" class="w-full border p-2 rounded-lg" placeholder="https://example.com/icon.png">
+                    <p class="text-xs text-gray-500 mt-1">Enter direct image URL for payment icon</p>
+                    <div class="mt-2 grid grid-cols-3 gap-2">
+                        <button type="button" onclick="setPaymentIcon('bKash')" class="text-xs border p-1 rounded hover:bg-gray-50">bKash</button>
+                        <button type="button" onclick="setPaymentIcon('Nagad')" class="text-xs border p-1 rounded hover:bg-gray-50">Nagad</button>
+                        <button type="button" onclick="setPaymentIcon('Rocket')" class="text-xs border p-1 rounded hover:bg-gray-50">Rocket</button>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Order Priority</label>
+                    <input type="number" id="payment-order" class="w-full border p-2 rounded-lg" value="1" min="1" max="10">
+                    <p class="text-xs text-gray-500 mt-1">Lower number shows first (1 = first position)</p>
+                </div>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <input type="checkbox" id="payment-active" class="w-4 h-4 mr-2" checked>
+                        <label for="payment-active" class="text-sm">Active (Show in user app)</label>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button onclick="closePaymentModal()" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                <button onclick="savePaymentMethod()" class="px-4 py-2 bg-blue-600 text-white rounded-lg">Save Payment Method</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- VERIFICATION SETTINGS MODAL -->
+    <div id="verification-settings-modal" class="fixed inset-0 modal-overlay flex items-center justify-center z-[110] hidden">
+        <div class="bg-white rounded-xl w-full max-w-md mx-4 p-4">
+            <h3 class="text-xl font-bold mb-4">ID Verification Settings</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Verification Fee (BDT)</label>
+                    <input type="number" id="verification-fee" class="w-full border p-2 rounded-lg" placeholder="Enter verification fee" min="0">
+                    <p class="text-xs text-gray-500 mt-1">Amount users must pay for ID verification</p>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
+                    <select id="verification-payment-method" class="w-full border p-2 rounded-lg">
+                        <option value="bKash">bKash</option>
+                        <option value="Nagad">Nagad</option>
+                        <option value="Rocket">Rocket</option>
+                    </select>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Payment Number</label>
+                    <input type="text" id="verification-payment-number" class="w-full border p-2 rounded-lg" placeholder="01XXXXXXXXX">
+                    <p class="text-xs text-gray-500 mt-1">Number where users will send verification fee</p>
+                </div>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <input type="checkbox" id="verification-mandatory" class="w-4 h-4 mr-2">
+                        <label for="verification-mandatory" class="text-sm">Mandatory for Withdrawal</label>
+                    </div>
+                </div>
+                <div class="flex items-center justify-between">
+                    <div class="flex items-center">
+                        <input type="checkbox" id="verification-enabled" class="w-4 h-4 mr-2" checked>
+                        <label for="verification-enabled" class="text-sm">Enable ID Verification System</label>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button onclick="closeVerificationSettingsModal()" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                <button onclick="saveVerificationSettings()" class="px-4 py-2 bg-blue-600 text-white rounded-lg">Save Settings</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- VERIFICATION DETAILS MODAL -->
+    <div id="verification-details-modal" class="fixed inset-0 modal-overlay flex items-center justify-center z-[110] hidden">
+        <div class="bg-white rounded-xl w-full max-w-lg mx-4 p-4 max-h-[90vh] overflow-y-auto">
+            <h3 class="text-xl font-bold mb-4">Verification Request Details</h3>
+            <div class="space-y-4">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">User Name</label>
+                        <input type="text" id="verification-user-name" class="w-full mt-1 border p-2 rounded-lg bg-gray-50" readonly>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">User Email</label>
+                        <input type="email" id="verification-user-email" class="w-full mt-1 border p-2 rounded-lg bg-gray-50" readonly>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Payment Method</label>
+                        <input type="text" id="verification-payment-method-details" class="w-full mt-1 border p-2 rounded-lg bg-gray-50" readonly>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Payment Number</label>
+                        <input type="text" id="verification-payment-number-details" class="w-full mt-1 border p-2 rounded-lg bg-gray-50 font-mono" readonly>
+                    </div>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Transaction ID</label>
+                        <input type="text" id="verification-transaction-id" class="w-full mt-1 border p-2 rounded-lg bg-gray-50 font-mono" readonly>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Amount Paid</label>
+                        <input type="text" id="verification-amount-paid" class="w-full mt-1 border p-2 rounded-lg bg-gray-50" readonly>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Payment Screenshot URL</label>
+                    <input type="text" id="verification-screenshot-url" class="w-full mt-1 border p-2 rounded-lg bg-gray-50" readonly>
+                </div>
+                <div class="image-preview mt-2">
+                    <img id="verification-screenshot-preview" src="" alt="Payment Screenshot" class="w-full h-48 object-contain rounded-lg border hidden">
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Request Date</label>
+                        <input type="text" id="verification-request-date" class="w-full mt-1 border p-2 rounded-lg bg-gray-50" readonly>
+                    </div>
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Status</label>
+                        <input type="text" id="verification-status-details" class="w-full mt-1 border p-2 rounded-lg bg-gray-50" readonly>
+                    </div>
+                </div>
+                <div id="verification-admin-notes" class="hidden">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Admin Notes</label>
+                    <textarea id="verification-notes" class="w-full mt-1 border p-2 rounded-lg" rows="3" placeholder="Add notes for this verification request"></textarea>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button onclick="closeVerificationDetailsModal()" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Close</button>
+                <button onclick="approveVerification()" class="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700">Approve</button>
+                <button onclick="rejectVerification()" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Reject</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- USER BLOCK MODAL -->
+    <div id="block-modal" class="fixed inset-0 modal-overlay flex items-center justify-center z-[110] hidden">
+        <div class="bg-white rounded-xl w-full max-w-md mx-4 p-4">
+            <h3 class="text-xl font-bold mb-4 text-red-600">Block User Account</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">User Information</label>
+                    <div class="mt-1 p-3 bg-gray-50 rounded-lg">
+                        <p class="font-semibold" id="block-user-name">Loading...</p>
+                        <p class="text-sm text-gray-500" id="block-user-email">Loading...</p>
+                        <p class="text-xs text-gray-400" id="block-user-id">Loading...</p>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Reason for Blocking</label>
+                    <select id="block-reason" class="w-full mt-1 border p-2 rounded-lg">
+                        <option value="Violation of Terms">Violation of Terms</option>
+                        <option value="Suspicious Activity">Suspicious Activity</option>
+                        <option value="Multiple Accounts">Multiple Accounts</option>
+                        <option value="Fraudulent Activity">Fraudulent Activity</option>
+                        <option value="Other">Other Reason</option>
+                    </select>
+                </div>
+                <div id="custom-reason-container" class="hidden">
+                    <label class="block text-sm font-medium text-gray-700">Custom Reason</label>
+                    <textarea id="block-custom-reason" class="w-full mt-1 border p-2 rounded-lg" rows="2" placeholder="Enter specific reason..."></textarea>
+                </div>
+                <div class="flex items-center">
+                    <input type="checkbox" id="block-permanent" class="w-4 h-4 mr-2">
+                    <label for="block-permanent" class="text-sm">Permanent Block (User cannot request unblock)</label>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Block Duration (Days)</label>
+                    <input type="number" id="block-duration" class="w-full mt-1 border p-2 rounded-lg" value="7" min="1" max="365">
+                    <p class="text-xs text-gray-500 mt-1">Leave empty for indefinite block</p>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button onclick="closeBlockModal()" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                <button onclick="confirmBlockUser()" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700">Block User</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- PASSWORD DETAILS MODAL -->
+    <div id="password-modal" class="fixed inset-0 modal-overlay flex items-center justify-center z-[110] hidden">
+        <div class="bg-white rounded-xl w-full max-w-md mx-4 p-4">
+            <h3 class="text-xl font-bold mb-4">User Password Details</h3>
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">User Name</label>
+                    <input type="text" id="modal-user-name" class="w-full mt-1 border p-2 rounded-lg bg-gray-50" readonly>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Email Address</label>
+                    <input type="email" id="modal-user-email" class="w-full mt-1 border p-2 rounded-lg bg-gray-50" readonly>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">User ID</label>
+                    <input type="text" id="modal-user-id" class="w-full mt-1 border p-2 rounded-lg bg-gray-50 font-mono text-sm" readonly>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Current Password</label>
+                    <div class="flex items-center gap-2">
+                        <input type="text" id="modal-user-password" class="w-full mt-1 border p-2 rounded-lg font-mono password-field" readonly>
+                        <button onclick="copyPassword()" class="bg-blue-100 text-blue-600 p-2 rounded-lg hover:bg-blue-200">
+                            <i class="fas fa-copy"></i>
+                        </button>
+                    </div>
+                </div>
+                <div id="reset-request-info" class="hidden">
+                    <div class="bg-yellow-50 border border-yellow-200 rounded-lg p-3">
+                        <h4 class="font-semibold text-yellow-700 mb-2">Password Reset Request</h4>
+                        <p class="text-sm text-yellow-600" id="reset-request-details"></p>
+                    </div>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button onclick="closePasswordModal()" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Close</button>
+                <button onclick="changeUserPassword()" class="px-4 py-2 bg-blue-600 text-white rounded-lg">Change Password</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- DELETE USER CONFIRMATION MODAL -->
+    <div id="delete-user-modal" class="fixed inset-0 modal-overlay flex items-center justify-center z-[110] hidden">
+        <div class="bg-white rounded-xl w-full max-w-md mx-4 p-4">
+            <h3 class="text-xl font-bold mb-4 text-red-600">Delete User Account</h3>
+            <div class="space-y-4">
+                <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div class="flex items-center">
+                        <i class="fas fa-exclamation-triangle text-red-500 text-2xl mr-3"></i>
+                        <div>
+                            <h4 class="font-semibold text-red-700">Warning!</h4>
+                            <p class="text-sm text-red-600">This action cannot be undone. All user data will be permanently deleted.</p>
+                        </div>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">User Information</label>
+                    <div class="mt-1 p-3 bg-gray-50 rounded-lg">
+                        <p class="font-semibold" id="delete-user-name">Loading...</p>
+                        <p class="text-sm text-gray-500" id="delete-user-email">Loading...</p>
+                        <p class="text-xs text-gray-400" id="delete-user-id">Loading...</p>
+                    </div>
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700">Reason for Deletion</label>
+                    <input type="text" id="delete-reason" class="w-full mt-1 border p-2 rounded-lg" placeholder="Enter reason for deletion...">
+                </div>
+                <div class="flex items-center">
+                    <input type="checkbox" id="delete-confirm" class="w-4 h-4 mr-2">
+                    <label for="delete-confirm" class="text-sm">I understand this action is permanent and cannot be undone</label>
+                </div>
+            </div>
+            <div class="flex justify-end gap-3 mt-6">
+                <button onclick="closeDeleteModal()" class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-lg">Cancel</button>
+                <button onclick="confirmDeleteUser()" class="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50" id="confirm-delete-btn" disabled>Delete User Permanently</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- FIREBASE SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+
+    <script>
+        // --- 1. CONFIGURATION ---
+        const firebaseConfig = {
+  apiKey: "AIzaSyBp1LZR0tj3Y_1XRkAhLHPc5ZC59J8Q5uY",
+  authDomain: "moviehunt-f6dfe.firebaseapp.com",
+  projectId: "moviehunt-f6dfe",
+  storageBucket: "moviehunt-f6dfe.firebasestorage.app",
+  messagingSenderId: "742383925182",
+  appId: "1:742383925182:web:5c629898042d21aa98abef"
+};
+
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const auth = firebase.auth();
+        const db = firebase.database();
+
+        // Admin email and password for initial setup
+        const ADMIN_EMAIL = "admin@gmail.com";
+        const ADMIN_PASSWORD = "Admin12345";
+
+        // EmailJS Configuration (for sending emails)
+        emailjs.init("YOUR_EMAILJS_USER_ID");
+
+        // --- 2. AUTHENTICATION LOGIC ---
+        function handleLogin() {
+            const email = document.getElementById('login-email').value;
+            const pass = document.getElementById('login-pass').value;
+            const btn = document.getElementById('login-btn');
+            const errorDiv = document.getElementById('login-error');
+
+            if(!email || !pass) {
+                errorDiv.innerText = "Please fill in all fields";
+                errorDiv.classList.remove('hidden');
+                return;
+            }
+            
+            btn.innerText = "Authenticating...";
+            btn.disabled = true;
+            errorDiv.classList.add('hidden');
+
+            // সরাসরি সাইন ইন - কোন ডাটাবেস চেক নেই
+            auth.signInWithEmailAndPassword(email, pass)
+                .then((userCredential) => {
+                    // লগইন সফল হলে সরাসরি ড্যাশবোর্ড লোড হবে
+                    initDashboard();
+                })
+                .catch((error) => {
+                    let errorMessage = "Login failed! ";
+                    
+                    if (error.code === 'auth/invalid-email') {
+                        errorMessage = "❌ Invalid email address";
+                    } else if (error.code === 'auth/user-not-found') {
+                        errorMessage = "❌ Account not found";
+                    } else if (error.code === 'auth/wrong-password') {
+                        errorMessage = "❌ Incorrect password";
+                    } else {
+                        errorMessage = "❌ Login failed. Check credentials";
+                    }
+                    
+                    errorDiv.innerText = errorMessage;
+                    errorDiv.classList.remove('hidden');
+                    btn.innerText = "Login to Dashboard";
+                    btn.disabled = false;
+                });
+        }
+
+        function handleLogout() {
+            if(confirm("Are you sure you want to logout?")) {
+                auth.signOut().then(() => {
+                    location.reload();
+                });
+            }
+        }
+
+        // পেজ লোড হওয়ার সময় ইউজার চেক
+        auth.onAuthStateChanged((user) => {
+            if (user) {
+                // ইউজার লগইন করা থাকলে সরাসরি ড্যাশবোর্ড দেখাবে
+                initDashboard();
+            } else {
+                // লগইন করা না থাকলে লগইন স্ক্রিন দেখাবে
+                document.getElementById('login-screen').classList.remove('hidden');
+                document.getElementById('dashboard-screen')?.classList.add('hidden');
+            }
+        });
+
+        // Create initial admin on first load
+        function createInitialAdmin() {
+            auth.createUserWithEmailAndPassword(ADMIN_EMAIL, ADMIN_PASSWORD)
+                .then((userCredential) => {
+                    // Add to admins node
+                    db.ref('admins/' + userCredential.user.uid).set({
+                        email: ADMIN_EMAIL,
+                        name: 'Super Admin',
+                        created: Date.now(),
+                        role: 'superadmin'
+                    });
+                    
+                    // Also create initial settings
+                    initializeSettings();
+                    
+                    console.log('Initial admin created!');
+                })
+                .catch((error) => {
+                    if (error.code === 'auth/email-already-in-use') {
+                        console.log('Admin already exists');
+                    }
+                });
+        }
+
+        function initializeSettings() {
+            // Global settings
+            const globalSettings = {
+                coinRate: 20,
+                dailyLimit: 20,
+                minWithdraw: 100,
+                referralPercentage: 10,
+                referralBonus: 50,
+                vpnBlock: true,
+                ipLimit: 5,
+                updatedAt: Date.now()
+            };
+            
+            db.ref('settings/global').set(globalSettings);
+            
+            // Verification settings
+            const verificationSettings = {
+                fee: 50,
+                paymentMethod: 'bKash',
+                paymentNumber: '01XXXXXXXXX',
+                mandatory: true,
+                enabled: true,
+                updatedAt: Date.now()
+            };
+            
+            db.ref('settings/verification').set(verificationSettings);
+            
+            // Default payment methods
+            const paymentMethods = {
+                bKash: {
+                    name: 'bKash',
+                    icon: 'https://firebasestorage.googleapis.com/v0/b/image-to-link-6621c.appspot.com/o/storage%2Fdata%2F1000777640.jpg?alt=media&token=1e020a19-3196-4bb2-85a9-21a39eaa96e4',
+                    active: true,
+                    order: 1
+                },
+                Nagad: {
+                    name: 'Nagad',
+                    icon: 'https://firebasestorage.googleapis.com/v0/b/image-to-link-6621c.appspot.com/o/storage%2Fdata%2F1000777935.jpg?alt=media&token=5c1691fb-4e12-4def-b94a-fc646a5c3124',
+                    active: true,
+                    order: 2
+                },
+                Rocket: {
+                    name: 'Rocket',
+                    icon: 'https://firebasestorage.googleapis.com/v0/b/image-to-link-6621c.appspot.com/o/storage%2Fdata%2F1000777936.jpg?alt=media&token=8058bf24-498a-4147-a4e4-dd1d8d488c7c',
+                    active: true,
+                    order: 3
+                }
+            };
+            
+            db.ref('payment_methods').set(paymentMethods);
+            
+            // Default tasks
+            const defaultTasks = {
+                task1: {
+                    title: "ওয়েবসাইট ভিজিট করুন",
+                    type: "Web Visit",
+                    reward: 20,
+                    timer: 30,
+                    url: "https://www.google.com",
+                    description: "ওয়েবসাইট ভিজিট করুন এবং ৩০ সেকেন্ড অপেক্ষা করুন",
+                    status: "enabled",
+                    completedCount: 0,
+                    createdAt: Date.now()
+                }
+            };
+            
+            db.ref('tasks').set(defaultTasks);
+            
+            // Default slider
+            const defaultSlider = {
+                slide1: {
+                    title: "Welcome to PTC Tasks",
+                    description: "Earn money by completing simple tasks",
+                    buttonText: "Get Started",
+                    buttonLink: "#",
+                    imageUrl: "https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&h=400&q=80",
+                    active: true,
+                    order: 1,
+                    createdAt: Date.now()
+                }
+            };
+            
+            db.ref('slider').set(defaultSlider);
+        }
+
+        // Call this on first load
+        createInitialAdmin();
+
+        // --- 3. PAGE ROUTING ---
+        function showPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
+            document.querySelectorAll('.sidebar-link').forEach(l => l.classList.remove('active'));
+            
+            document.getElementById('page-' + pageId).classList.remove('hidden');
+            document.getElementById('link-' + pageId).classList.add('active');
+            
+            if(pageId === 'dashboard') refreshDashboard();
+            if(pageId === 'users') loadUsers();
+            if(pageId === 'passwords') {
+                showPasswordTab('all');
+                loadPasswords();
+            }
+            if(pageId === 'tasks') loadTasks();
+            if(pageId === 'withdrawals') loadWithdrawals();
+            if(pageId === 'verification') {
+                loadVerificationRequests();
+                loadVerificationStats();
+            }
+            if(pageId === 'slider') {
+                loadSliderItems();
+                loadSliderSettings();
+            }
+            if(pageId === 'payment') loadPaymentMethods();
+            if(pageId === 'support') fetchSupportSettings();
+            if(pageId === 'settings') fetchSettings();
+            if(pageId === 'notices') fetchNotices();
+            
+            // Close mobile sidebar
+            document.getElementById('sidebar').classList.remove('active');
+        }
+
+        // --- 4. DASHBOARD LOGIC ---
+        function initDashboard() {
+            document.getElementById('login-screen').classList.add('hidden');
+            document.getElementById('admin-content').classList.remove('hidden');
+            
+            // Listen to Stats
+            db.ref('users').on('value', snap => {
+                const count = snap.numChildren();
+                document.getElementById('stat-total-users').innerText = count;
+                
+                let verifiedUsers = 0;
+                let totalCoins = 0;
+                snap.forEach(user => {
+                    if(user.val().verified) verifiedUsers++;
+                    totalCoins += (user.val().coins || 0);
+                });
+                document.getElementById('stat-verified-users').innerText = verifiedUsers;
+                
+                // Update charts
+                updateDashboardCharts(count, verifiedUsers);
+            });
+
+            db.ref('withdrawals').orderByChild('status').equalTo('Pending').on('value', snap => {
+                const count = snap.numChildren();
+                document.getElementById('stat-pending-withdrawals').innerText = count;
+                document.getElementById('pending-badge').innerText = count;
+                count > 0 ? document.getElementById('pending-badge').classList.remove('hidden') : document.getElementById('pending-badge').classList.add('hidden');
+            });
+
+            db.ref('verification_requests').orderByChild('status').equalTo('pending').on('value', snap => {
+                const count = snap.numChildren();
+                document.getElementById('stat-verification-requests').innerText = count;
+                document.getElementById('verification-badge').innerText = count;
+                count > 0 ? document.getElementById('verification-badge').classList.remove('hidden') : document.getElementById('verification-badge').classList.add('hidden');
+            });
+
+            initCharts();
+        }
+
+        function updateDashboardCharts(totalUsers, verifiedUsers) {
+            const verificationChart = Chart.getChart('verificationChart');
+            if(verificationChart) {
+                const unverifiedUsers = totalUsers - verifiedUsers;
+                verificationChart.data.datasets[0].data = [verifiedUsers, unverifiedUsers, 0];
+                verificationChart.update();
+            }
+        }
+
+        // --- 5. USER MANAGEMENT WITH VERIFICATION ---
+        let allUsers = [];
+        let currentUserFilter = 'all';
+        let userToDelete = null;
+        
+        function loadUsers() {
+            currentUserFilter = document.getElementById('user-filter').value;
+            const table = document.getElementById('users-table-body');
+            table.innerHTML = '<tr><td colspan="5" class="p-10 text-center"><i class="fas fa-spinner fa-spin text-blue-500 mr-2"></i> Loading users...</td></tr>';
+            
+            db.ref('users').once('value', snap => {
+                table.innerHTML = "";
+                allUsers = [];
+                snap.forEach(child => {
+                    const u = child.val();
+                    u.uid = child.key;
+                    allUsers.push(u);
+                    
+                    // Filter users
+                    if(currentUserFilter === 'verified' && !u.verified) return;
+                    if(currentUserFilter === 'unverified' && u.verified) return;
+                    if(currentUserFilter === 'active' && u.isBlocked) return;
+                    if(currentUserFilter === 'blocked' && !u.isBlocked) return;
+                    if(currentUserFilter === 'verification_pending' && u.verified) return;
+                    
+                    renderUserRow(u);
+                });
+                
+                if(table.innerHTML === "") {
+                    table.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-gray-500">No users found</td></tr>';
+                }
+            });
+        }
+
+        function renderUserRow(u) {
+            const table = document.getElementById('users-table-body');
+            const isBlocked = u.isBlocked || false;
+            const rowClass = isBlocked ? 'blocked-user-row' : '';
+            
+            // Check if user has verification request pending
+            const hasVerificationRequest = u.hasVerificationRequest || false;
+            
+            const row = `
+                <tr class="border-b hover:bg-gray-50 transition ${rowClass}" id="user-row-${u.uid}">
+                    <td class="px-4 py-3">
+                        <div class="font-bold">${u.name || 'No Name'}</div>
+                        <div class="text-xs text-gray-500">${u.email}</div>
+                        <div class="text-[10px] font-mono text-blue-400">${u.uid}</div>
+                        <div class="mt-1 text-xs">
+                            ${u.verified ? 
+                                '<span class="px-2 py-0.5 rounded-full verified-badge">✓ Verified</span>' : 
+                                '<span class="px-2 py-0.5 rounded-full unverified-badge">Unverified</span>'
+                            }
+                            ${hasVerificationRequest ? 
+                                '<span class="px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 ml-1"><i class="fas fa-clock mr-1"></i>Verification Pending</span>' : ''
+                            }
+                        </div>
+                    </td>
+                    <td class="px-4 py-3">
+                        <div class="text-sm">🪙 <span class="font-bold">${u.coins || 0}</span></div>
+                        <div class="text-xs text-green-600">৳ ${((u.coins || 0) / 20).toFixed(2)}</div>
+                        ${u.referralCode ? `
+                            <div class="text-xs text-purple-600 mt-1">
+                                <i class="fas fa-user-friends mr-1"></i>Ref: ${u.referralCode}
+                            </div>
+                        ` : ''}
+                    </td>
+                    <td class="px-4 py-3">
+                        <div class="text-sm">
+                            ${u.verified ? 
+                                '<span class="text-green-600"><i class="fas fa-check-circle mr-1"></i>Verified</span>' : 
+                                '<span class="text-yellow-600"><i class="fas fa-clock mr-1"></i>Unverified</span>'
+                            }
+                        </div>
+                        <div class="text-xs text-gray-500">
+                            ${u.verifiedAt ? `Verified: ${new Date(u.verifiedAt).toLocaleDateString()}` : 'Not verified'}
+                        </div>
+                        ${hasVerificationRequest ? `
+                            <div class="mt-1">
+                                <button onclick="viewUserVerification('${u.uid}')" class="text-xs bg-blue-100 text-blue-700 px-2 py-1 rounded hover:bg-blue-200">
+                                    View Verification Request
+                                </button>
+                            </div>
+                        ` : ''}
+                    </td>
+                    <td class="px-4 py-3">
+                        ${isBlocked ? `
+                            <span class="px-2 py-1 rounded-full text-[10px] font-bold bg-red-100 text-red-600">
+                                <i class="fas fa-ban mr-1"></i>Blocked
+                            </span>
+                            ${u.blockInfo ? `
+                                <div class="text-xs text-gray-500 mt-1">
+                                    Reason: ${u.blockInfo.reason || 'N/A'}
+                                </div>
+                            ` : ''}
+                        ` : `
+                            <span class="px-2 py-1 rounded-full text-[10px] font-bold bg-green-100 text-green-600">
+                                Active
+                            </span>
+                        `}
+                    </td>
+                    <td class="px-4 py-3 space-y-1">
+                        <button onclick="editUserCoins('${u.uid}', ${u.coins || 0})" class="text-blue-600 hover:underline text-sm font-medium block">Edit Coins</button>
+                        ${u.verified ? `
+                            <button onclick="unverifyUser('${u.uid}')" class="text-orange-600 hover:underline text-sm font-medium block">Unverify</button>
+                        ` : `
+                            <button onclick="verifyUserManually('${u.uid}', '${u.name}', '${u.email}')" class="text-green-600 hover:underline text-sm font-medium block">Verify</button>
+                        `}
+                        ${isBlocked ? `
+                            <button onclick="unblockUser('${u.uid}')" class="text-green-600 hover:underline text-sm font-medium block">Unblock</button>
+                        ` : `
+                            <button onclick="blockUser('${u.uid}', '${u.name}', '${u.email}')" class="text-red-600 hover:underline text-sm font-medium block">Block</button>
+                        `}
+                        <button onclick="deleteUserModal('${u.uid}', '${u.name}', '${u.email}')" class="text-red-700 hover:underline text-sm font-medium block">
+                            <i class="fas fa-trash mr-1"></i>Delete
+                        </button>
+                    </td>
+                </tr>
+            `;
+            table.innerHTML += row;
+        }
+
+        function viewUserVerification(uid) {
+            // Check if user has verification request
+            db.ref('verification_requests').orderByChild('userId').equalTo(uid).once('value', snap => {
+                if(snap.exists()) {
+                    snap.forEach(child => {
+                        const request = child.val();
+                        if(request.status === 'pending') {
+                            viewVerificationDetails(child.key);
+                            return;
+                        }
+                    });
+                } else {
+                    alert('No verification request found for this user');
+                }
+            });
+        }
+
+        // --- USER DELETE FUNCTIONALITY ---
+        function deleteUserModal(uid, userName, userEmail) {
+            userToDelete = { uid, userName, userEmail };
+            document.getElementById('delete-user-name').textContent = userName || 'No Name';
+            document.getElementById('delete-user-email').textContent = userEmail || 'No Email';
+            document.getElementById('delete-user-id').textContent = `UID: ${uid}`;
+            document.getElementById('delete-user-modal').classList.remove('hidden');
+            
+            // Enable/disable delete button based on confirmation checkbox
+            const confirmCheckbox = document.getElementById('delete-confirm');
+            const deleteBtn = document.getElementById('confirm-delete-btn');
+            
+            confirmCheckbox.onchange = function() {
+                deleteBtn.disabled = !this.checked;
+            };
+        }
+
+        function closeDeleteModal() {
+            document.getElementById('delete-user-modal').classList.add('hidden');
+            userToDelete = null;
+            document.getElementById('delete-confirm').checked = false;
+            document.getElementById('confirm-delete-btn').disabled = true;
+        }
+
+        function confirmDeleteUser() {
+            if(!userToDelete || !document.getElementById('delete-confirm').checked) return;
+            
+            const reason = document.getElementById('delete-reason').value;
+            if(!reason) {
+                alert('Please provide a reason for deletion');
+                return;
+            }
+            
+            if(confirm(`Are you absolutely sure you want to PERMANENTLY delete user: ${userToDelete.userName}?\n\nThis action cannot be undone!`)) {
+                // Store deletion record first
+                const deletionRecord = {
+                    userId: userToDelete.uid,
+                    userName: userToDelete.userName,
+                    userEmail: userToDelete.userEmail,
+                    deletedBy: auth.currentUser.email,
+                    deletedAt: Date.now(),
+                    reason: reason
+                };
+                
+                db.ref('deleted_users/' + userToDelete.uid).set(deletionRecord)
+                    .then(() => {
+                        // Now delete the user
+                        return db.ref('users/' + userToDelete.uid).remove();
+                    })
+                    .then(() => {
+                        alert('User account has been permanently deleted!');
+                        closeDeleteModal();
+                        loadUsers();
+                    })
+                    .catch(error => {
+                        alert('Error deleting user: ' + error.message);
+                    });
+            }
+        }
+
+        // --- 6. ID VERIFICATION MANAGEMENT ---
+        let currentVerificationFilter = 'pending';
+        let verificationDetails = null;
+
+        function loadVerificationRequests() {
+            currentVerificationFilter = document.getElementById('verification-filter').value;
+            const table = document.getElementById('verification-table-body');
+            table.innerHTML = '<tr><td colspan="4" class="p-10 text-center"><i class="fas fa-spinner fa-spin text-blue-500 mr-2"></i> Loading verification requests...</td></tr>';
+            
+            let query = db.ref('verification_requests');
+            
+            if(currentVerificationFilter !== 'all') {
+                query = query.orderByChild('status').equalTo(currentVerificationFilter);
+            }
+            
+            query.once('value', snap => {
+                table.innerHTML = "";
+                
+                if(!snap.exists() || snap.numChildren() === 0) {
+                    table.innerHTML = '<tr><td colspan="4" class="p-10 text-center text-gray-500">No verification requests found</td></tr>';
+                    return;
+                }
+                
+                snap.forEach(child => {
+                    const request = child.val();
+                    request.id = child.key;
+                    renderVerificationRow(request);
+                });
+            });
+        }
+
+        function renderVerificationRow(request) {
+            const table = document.getElementById('verification-table-body');
+            
+            const statusClass = {
+                'pending': 'verification-required',
+                'approved': 'verification-approved',
+                'rejected': 'verification-rejected'
+            }[request.status] || '';
+            
+            const row = `
+                <tr class="border-b hover:bg-gray-50 transition ${statusClass}">
+                    <td class="px-4 py-3">
+                        <div class="font-bold">${request.userName || 'Unknown User'}</div>
+                        <div class="text-xs text-gray-500">${request.userEmail || 'No email'}</div>
+                        <div class="text-[10px] font-mono text-blue-400">UID: ${request.userId}</div>
+                        <div class="text-xs text-gray-500 mt-1">
+                            ${new Date(request.timestamp).toLocaleString()}
+                        </div>
+                        <div class="mt-1">
+                            <button onclick="viewUserInUsersPage('${request.userId}')" class="text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded hover:bg-gray-200">
+                                View User
+                            </button>
+                        </div>
+                    </td>
+                    <td class="px-4 py-3">
+                        <div class="font-bold text-green-600">৳ ${request.amount || 0}</div>
+                        <div class="text-sm">${request.paymentMethod}</div>
+                        <div class="text-xs font-mono">${request.paymentNumber}</div>
+                        <div class="text-xs text-gray-500 truncate">TXID: ${request.transactionId || 'N/A'}</div>
+                        <button onclick="viewScreenshot('${request.screenshotUrl}')" class="text-xs text-blue-600 hover:underline mt-1 ${!request.screenshotUrl ? 'hidden' : ''}">
+                            <i class="fas fa-image mr-1"></i>View Screenshot
+                        </button>
+                    </td>
+                    <td class="px-4 py-3">
+                        <span class="px-2 py-1 rounded-full text-[10px] font-bold ${request.status === 'pending' ? 'bg-yellow-100 text-yellow-700' : (request.status === 'approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700')}">
+                            ${request.status.charAt(0).toUpperCase() + request.status.slice(1)}
+                        </span>
+                        ${request.processedAt ? `
+                            <div class="text-xs text-gray-500 mt-1">
+                                Processed: ${new Date(request.processedAt).toLocaleDateString()}
+                            </div>
+                            <div class="text-xs text-gray-500">
+                                By: ${request.processedBy || 'Admin'}
+                            </div>
+                        ` : ''}
+                    </td>
+                    <td class="px-4 py-3 space-y-1">
+                        <button onclick="viewVerificationDetails('${request.id}')" 
+                                class="text-blue-600 hover:underline text-sm font-medium block">
+                            <i class="fas fa-eye mr-1"></i>Details
+                        </button>
+                        ${request.status === 'pending' ? `
+                            <button onclick="approveVerificationFromList('${request.id}', '${request.userId}')" 
+                                    class="text-green-600 hover:underline text-sm font-medium block">
+                                <i class="fas fa-check mr-1"></i>Approve
+                            </button>
+                            <button onclick="rejectVerificationFromList('${request.id}', '${request.userId}')" 
+                                    class="text-red-600 hover:underline text-sm font-medium block">
+                                <i class="fas fa-times mr-1"></i>Reject
+                            </button>
+                        ` : ''}
+                        <button onclick="deleteVerificationRequest('${request.id}')" 
+                                class="text-red-700 hover:underline text-sm font-medium block">
+                            <i class="fas fa-trash mr-1"></i>Delete
+                        </button>
+                    </td>
+                </tr>
+            `;
+            table.innerHTML += row;
+        }
+
+        function viewScreenshot(url) {
+            if(url) {
+                window.open(url, '_blank');
+            }
+        }
+
+        function viewUserInUsersPage(userId) {
+            showPage('users');
+            // Highlight the user row
+            setTimeout(() => {
+                const userRow = document.getElementById('user-row-' + userId);
+                if(userRow) {
+                    userRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                    userRow.classList.add('bg-yellow-50');
+                    setTimeout(() => userRow.classList.remove('bg-yellow-50'), 2000);
+                }
+            }, 500);
+        }
+
+        function deleteVerificationRequest(requestId) {
+            if(confirm('Delete this verification request?')) {
+                db.ref('verification_requests/' + requestId).remove()
+                    .then(() => {
+                        loadVerificationRequests();
+                        loadVerificationStats();
+                    })
+                    .catch(error => {
+                        alert('Error deleting request: ' + error.message);
+                    });
+            }
+        }
+
+        function loadVerificationStats() {
+            // Load verification settings
+            db.ref('settings/verification').once('value', snap => {
+                const settings = snap.val() || {};
+                document.getElementById('verification-fee-display').textContent = `৳ ${settings.fee || 0}`;
+                document.getElementById('payment-number-display').textContent = settings.paymentNumber || 'Not set';
+            });
+            
+            // Count total verified users
+            db.ref('users').orderByChild('verified').equalTo(true).once('value', snap => {
+                document.getElementById('total-verified-display').textContent = snap.numChildren();
+            });
+            
+            // Count pending requests
+            db.ref('verification_requests').orderByChild('status').equalTo('pending').once('value', snap => {
+                document.getElementById('pending-requests-display').textContent = snap.numChildren();
+            });
+            
+            // Calculate total earnings from verification
+            db.ref('verification_requests').orderByChild('status').equalTo('approved').once('value', snap => {
+                let totalEarnings = 0;
+                snap.forEach(child => {
+                    const request = child.val();
+                    totalEarnings += (request.amount || 0);
+                });
+                document.getElementById('verification-earnings').textContent = `৳ ${totalEarnings}`;
+            });
+        }
+
+        function openVerificationSettingsModal() {
+            db.ref('settings/verification').once('value', snap => {
+                const settings = snap.val() || {};
+                document.getElementById('verification-fee').value = settings.fee || 50;
+                document.getElementById('verification-payment-method').value = settings.paymentMethod || 'bKash';
+                document.getElementById('verification-payment-number').value = settings.paymentNumber || '01XXXXXXXXX';
+                document.getElementById('verification-mandatory').checked = settings.mandatory || false;
+                document.getElementById('verification-enabled').checked = settings.enabled !== false;
+            });
+            document.getElementById('verification-settings-modal').classList.remove('hidden');
+        }
+
+        function closeVerificationSettingsModal() {
+            document.getElementById('verification-settings-modal').classList.add('hidden');
+        }
+
+        function saveVerificationSettings() {
+            const verificationData = {
+                fee: parseInt(document.getElementById('verification-fee').value),
+                paymentMethod: document.getElementById('verification-payment-method').value,
+                paymentNumber: document.getElementById('verification-payment-number').value,
+                mandatory: document.getElementById('verification-mandatory').checked,
+                enabled: document.getElementById('verification-enabled').checked,
+                updatedAt: Date.now(),
+                updatedBy: auth.currentUser.email
+            };
+
+            db.ref('settings/verification').set(verificationData)
+                .then(() => {
+                    alert('✅ Verification settings saved successfully!');
+                    closeVerificationSettingsModal();
+                    loadVerificationStats();
+                })
+                .catch(error => {
+                    alert('❌ Error saving verification settings: ' + error.message);
+                });
+        }
+
+        function viewVerificationDetails(requestId) {
+            db.ref('verification_requests/' + requestId).once('value', snap => {
+                const request = snap.val();
+                if(!request) return;
+                
+                verificationDetails = { id: requestId, ...request };
+                
+                document.getElementById('verification-user-name').value = request.userName || 'Unknown User';
+                document.getElementById('verification-user-email').value = request.userEmail || 'No email';
+                document.getElementById('verification-payment-method-details').value = request.paymentMethod || 'N/A';
+                document.getElementById('verification-payment-number-details').value = request.paymentNumber || 'N/A';
+                document.getElementById('verification-transaction-id').value = request.transactionId || 'N/A';
+                document.getElementById('verification-amount-paid').value = `৳ ${request.amount || 0}`;
+                document.getElementById('verification-screenshot-url').value = request.screenshotUrl || 'No screenshot';
+                document.getElementById('verification-request-date').value = new Date(request.timestamp).toLocaleString();
+                document.getElementById('verification-status-details').value = request.status.charAt(0).toUpperCase() + request.status.slice(1);
+                
+                // Show/hide admin notes section
+                const notesSection = document.getElementById('verification-admin-notes');
+                if(request.status === 'pending') {
+                    notesSection.classList.remove('hidden');
+                    document.getElementById('verification-notes').value = request.notes || '';
+                } else {
+                    notesSection.classList.add('hidden');
+                }
+                
+                // Show screenshot preview if available
+                const preview = document.getElementById('verification-screenshot-preview');
+                if(request.screenshotUrl) {
+                    preview.src = request.screenshotUrl;
+                    preview.classList.remove('hidden');
+                } else {
+                    preview.classList.add('hidden');
+                }
+                
+                document.getElementById('verification-details-modal').classList.remove('hidden');
+            });
+        }
+
+        function closeVerificationDetailsModal() {
+            document.getElementById('verification-details-modal').classList.add('hidden');
+            verificationDetails = null;
+        }
+
+        function approveVerification() {
+            if(!verificationDetails) return;
+            
+            const notes = document.getElementById('verification-notes').value;
+            
+            // Update verification request
+            db.ref('verification_requests/' + verificationDetails.id).update({
+                status: 'approved',
+                processedAt: Date.now(),
+                processedBy: auth.currentUser.email,
+                notes: notes
+            })
+            .then(() => {
+                // Update user's verification status
+                db.ref('users/' + verificationDetails.userId).update({
+                    verified: true,
+                    verifiedAt: Date.now(),
+                    verifiedBy: auth.currentUser.email,
+                    hasVerificationRequest: false
+                })
+                .then(() => {
+                    alert('✅ User verification approved successfully!');
+                    closeVerificationDetailsModal();
+                    loadVerificationRequests();
+                    loadVerificationStats();
+                    loadUsers();
+                });
+            })
+            .catch(error => {
+                alert('❌ Error approving verification: ' + error.message);
+            });
+        }
+
+        function rejectVerification() {
+            if(!verificationDetails) return;
+            
+            const notes = document.getElementById('verification-notes').value;
+            const reason = prompt('Enter rejection reason:', 'Payment verification failed');
+            
+            if(reason) {
+                db.ref('verification_requests/' + verificationDetails.id).update({
+                    status: 'rejected',
+                    processedAt: Date.now(),
+                    processedBy: auth.currentUser.email,
+                    notes: notes,
+                    rejectionReason: reason
+                })
+                .then(() => {
+                    // Update user to remove verification request flag
+                    db.ref('users/' + verificationDetails.userId).update({
+                        hasVerificationRequest: false
+                    })
+                    .then(() => {
+                        alert('❌ Verification request rejected!');
+                        closeVerificationDetailsModal();
+                        loadVerificationRequests();
+                        loadVerificationStats();
+                        loadUsers();
+                    });
+                })
+                .catch(error => {
+                    alert('❌ Error rejecting verification: ' + error.message);
+                });
+            }
+        }
+
+        function approveVerificationFromList(requestId, userId) {
+            if(confirm('Approve this verification request?')) {
+                db.ref('verification_requests/' + requestId).update({
+                    status: 'approved',
+                    processedAt: Date.now(),
+                    processedBy: auth.currentUser.email
+                })
+                .then(() => {
+                    db.ref('users/' + userId).update({
+                        verified: true,
+                        verifiedAt: Date.now(),
+                        verifiedBy: auth.currentUser.email,
+                        hasVerificationRequest: false
+                    })
+                    .then(() => {
+                        alert('✅ Verification approved!');
+                        loadVerificationRequests();
+                        loadVerificationStats();
+                        loadUsers();
+                    });
+                });
+            }
+        }
+
+        function rejectVerificationFromList(requestId, userId) {
+            const reason = prompt('Enter rejection reason:', 'Payment verification failed');
+            if(reason) {
+                db.ref('verification_requests/' + requestId).update({
+                    status: 'rejected',
+                    processedAt: Date.now(),
+                    processedBy: auth.currentUser.email,
+                    rejectionReason: reason
+                })
+                .then(() => {
+                    db.ref('users/' + userId).update({
+                        hasVerificationRequest: false
+                    })
+                    .then(() => {
+                        alert('❌ Verification rejected!');
+                        loadVerificationRequests();
+                        loadVerificationStats();
+                        loadUsers();
+                    });
+                });
+            }
+        }
+
+        function verifyUserManually(uid, userName, userEmail) {
+            if(confirm(`Manually verify ${userName || 'this user'}?`)) {
+                db.ref('users/' + uid).update({
+                    verified: true,
+                    verifiedAt: Date.now(),
+                    verifiedBy: auth.currentUser.email,
+                    verifiedManually: true
+                })
+                .then(() => {
+                    // Create a verification record
+                    const verificationRecord = {
+                        userId: uid,
+                        userName: userName,
+                        userEmail: userEmail,
+                        amount: 0,
+                        paymentMethod: 'manual',
+                        paymentNumber: 'N/A',
+                        transactionId: 'manual-' + Date.now(),
+                        screenshotUrl: '',
+                        status: 'approved',
+                        timestamp: Date.now(),
+                        processedAt: Date.now(),
+                        processedBy: auth.currentUser.email,
+                        notes: 'Manually verified by admin'
+                    };
+                    
+                    db.ref('verification_requests').push(verificationRecord)
+                        .then(() => {
+                            alert('✅ User manually verified!');
+                            loadUsers();
+                            loadVerificationRequests();
+                            loadVerificationStats();
+                        });
+                });
+            }
+        }
+
+        function unverifyUser(uid) {
+            if(confirm('Remove verification from this user?')) {
+                db.ref('users/' + uid).update({
+                    verified: false,
+                    verifiedAt: null,
+                    verifiedBy: null
+                })
+                .then(() => {
+                    alert('User verification removed!');
+                    loadUsers();
+                });
+            }
+        }
+
+        function exportVerificationData() {
+            let csv = 'User Name,User Email,Payment Method,Payment Number,Amount,Transaction ID,Status,Request Date,Processed Date,Processed By,Notes,Rejection Reason\n';
+            
+            db.ref('verification_requests').once('value', snap => {
+                snap.forEach(child => {
+                    const request = child.val();
+                    csv += `"${request.userName || ''}","${request.userEmail || ''}","${request.paymentMethod || ''}","${request.paymentNumber || ''}",${request.amount || 0},"${request.transactionId || ''}","${request.status || ''}","${new Date(request.timestamp).toLocaleString()}","${request.processedAt ? new Date(request.processedAt).toLocaleString() : ''}","${request.processedBy || ''}","${request.notes || ''}","${request.rejectionReason || ''}"\n`;
+                });
+                
+                const blob = new Blob([csv], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `verification_data_${new Date().toISOString().split('T')[0]}.csv`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                window.URL.revokeObjectURL(url);
+            });
+        }
+
+        function viewAllVerifiedUsers() {
+            document.getElementById('user-filter').value = 'verified';
+            showPage('users');
+        }
+
+        // --- 7. BLOCK USER FUNCTIONALITY ---
+        let userToBlock = null;
+        
+        function blockUser(uid, userName, userEmail) {
+            userToBlock = { uid, userName, userEmail };
+            document.getElementById('block-user-name').textContent = userName || 'No Name';
+            document.getElementById('block-user-email').textContent = userEmail || 'No Email';
+            document.getElementById('block-user-id').textContent = `UID: ${uid}`;
+            document.getElementById('block-modal').classList.remove('hidden');
+            
+            document.getElementById('block-reason').addEventListener('change', function() {
+                if(this.value === 'Other') {
+                    document.getElementById('custom-reason-container').classList.remove('hidden');
+                } else {
+                    document.getElementById('custom-reason-container').classList.add('hidden');
+                }
+            });
+        }
+
+        function closeBlockModal() {
+            document.getElementById('block-modal').classList.add('hidden');
+            userToBlock = null;
+        }
+
+        function confirmBlockUser() {
+            if(!userToBlock) return;
+            
+            const reason = document.getElementById('block-reason').value;
+            const customReason = document.getElementById('block-custom-reason').value;
+            const permanent = document.getElementById('block-permanent').checked;
+            const duration = document.getElementById('block-duration').value;
+            
+            const blockInfo = {
+                isBlocked: true,
+                blockInfo: {
+                    reason: reason === 'Other' ? customReason : reason,
+                    blockedBy: auth.currentUser.email,
+                    blockedAt: Date.now(),
+                    permanent: permanent,
+                    duration: duration ? parseInt(duration) : null,
+                    expiresAt: duration ? Date.now() + (parseInt(duration) * 24 * 60 * 60 * 1000) : null
+                }
+            };
+            
+            db.ref('users/' + userToBlock.uid).update(blockInfo)
+                .then(() => {
+                    alert(`✅ User ${userToBlock.userName} has been blocked successfully!`);
+                    closeBlockModal();
+                    loadUsers();
+                })
+                .catch(error => {
+                    alert('❌ Error blocking user: ' + error.message);
+                });
+        }
+
+        function unblockUser(uid) {
+            if(confirm('Are you sure you want to unblock this user?')) {
+                db.ref('users/' + uid).update({
+                    isBlocked: false,
+                    blockInfo: null
+                })
+                .then(() => {
+                    alert('✅ User has been unblocked successfully!');
+                    loadUsers();
+                })
+                .catch(error => {
+                    alert('❌ Error unblocking user: ' + error.message);
+                });
+            }
+        }
+
+        function editUserCoins(uid, current) {
+            const newVal = prompt("Enter new coin balance:", current);
+            if(newVal !== null && !isNaN(newVal)) {
+                db.ref('users/' + uid).update({ coins: parseInt(newVal) })
+                  .then(() => {
+                      alert('✅ Coin balance updated!');
+                      loadUsers();
+                  });
+            }
+        }
+
+        function searchUsers() {
+            const q = document.getElementById('user-search').value.toLowerCase();
+            const table = document.getElementById('users-table-body');
+            table.innerHTML = "";
+            
+            const filteredUsers = allUsers.filter(u => {
+                if(currentUserFilter === 'verified' && !u.verified) return false;
+                if(currentUserFilter === 'unverified' && u.verified) return false;
+                if(currentUserFilter === 'active' && u.isBlocked) return false;
+                if(currentUserFilter === 'blocked' && !u.isBlocked) return false;
+                if(currentUserFilter === 'verification_pending' && u.verified) return false;
+                
+                return u.name?.toLowerCase().includes(q) || 
+                       u.email?.toLowerCase().includes(q) || 
+                       u.uid.toLowerCase().includes(q);
+            });
+            
+            if(filteredUsers.length === 0) {
+                table.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-gray-500">No users found</td></tr>';
+                return;
+            }
+            
+            filteredUsers.forEach(u => renderUserRow(u));
+        }
+
+        function exportUsers() {
+            let csv = 'Name,Email,User ID,Verified,Coins,Balance (BDT),Status,Block Reason,Blocked By,Join Date,Last Login\n';
+            allUsers.forEach(u => {
+                const isBlocked = u.isBlocked || false;
+                const status = isBlocked ? 'Blocked' : 'Active';
+                const blockReason = u.blockInfo?.reason || '';
+                const blockedBy = u.blockInfo?.blockedBy || '';
+                const lastLogin = u.lastLogin ? new Date(u.lastLogin).toLocaleString() : 'Never';
+                
+                csv += `"${u.name || ''}","${u.email || ''}","${u.uid}","${u.verified ? 'Yes' : 'No'}","${u.coins || 0}","${((u.coins || 0) / 20).toFixed(2)}","${status}","${blockReason}","${blockedBy}","${new Date(u.joinDate || Date.now()).toLocaleDateString()}","${lastLogin}"\n`;
+            });
+            
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `users_export_${new Date().toISOString().split('T')[0]}.csv`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }
+
+        // --- 8. PASSWORD MANAGEMENT ---
+        let allUsersWithPasswords = [];
+        let currentPasswordTab = 'all';
+
+        function showPasswordTab(tab) {
+            currentPasswordTab = tab;
+            document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+            document.getElementById('tab-' + tab).classList.add('active');
+            filterPasswords();
+        }
+
+        function loadPasswords() {
+            const table = document.getElementById('passwords-table-body');
+            table.innerHTML = '<tr><td colspan="4" class="p-10 text-center"><i class="fas fa-spinner fa-spin text-blue-500 mr-2"></i> Loading user data...</td></tr>';
+            
+            db.ref('users').once('value', snap => {
+                allUsersWithPasswords = [];
+                snap.forEach(child => {
+                    const u = child.val();
+                    u.uid = child.key;
+                    allUsersWithPasswords.push(u);
+                });
+                
+                db.ref('password_reset_requests').orderByChild('status').equalTo('pending').once('value', resetSnap => {
+                    const resetRequests = [];
+                    resetSnap.forEach(resetChild => {
+                        resetRequests.push({
+                            uid: resetChild.val().userId,
+                            email: resetChild.val().userEmail,
+                            timestamp: resetChild.val().timestamp,
+                            requestId: resetChild.key,
+                            status: resetChild.val().status
+                        });
+                    });
+                    
+                    document.getElementById('reset-count-badge').innerText = resetRequests.length;
+                    if(resetRequests.length > 0) {
+                        document.getElementById('reset-count-badge').classList.remove('hidden');
+                    } else {
+                        document.getElementById('reset-count-badge').classList.add('hidden');
+                    }
+                    
+                    allUsersWithPasswords.forEach(user => {
+                        const resetReq = resetRequests.find(r => r.email === user.email);
+                        user.resetRequest = resetReq || null;
+                    });
+                    
+                    renderPasswordsTable();
+                });
+            });
+        }
+
+        function renderPasswordsTable() {
+            const table = document.getElementById('passwords-table-body');
+            table.innerHTML = "";
+            
+            let filteredUsers = allUsersWithPasswords;
+            if(currentPasswordTab === 'reset') {
+                filteredUsers = allUsersWithPasswords.filter(u => u.resetRequest && u.resetRequest.status === 'pending');
+            }
+            
+            document.getElementById('total-passwords').innerText = filteredUsers.length;
+            
+            if(filteredUsers.length === 0) {
+                table.innerHTML = `<tr><td colspan="4" class="p-10 text-center text-gray-500">No users found</td></tr>`;
+                return;
+            }
+            
+            filteredUsers.forEach(u => {
+                const hasResetRequest = u.resetRequest && u.resetRequest.status === 'pending';
+                const row = `
+                    <tr class="border-b hover:bg-gray-50 transition ${hasResetRequest ? 'bg-yellow-50' : ''}">
+                        <td class="px-4 py-3">
+                            <div class="font-bold">${u.name || 'No Name'}</div>
+                            <div class="text-xs text-gray-500">UID: ${u.uid}</div>
+                            <div class="text-xs text-gray-500">Joined: ${new Date(u.joinDate || Date.now()).toLocaleDateString()}</div>
+                            ${u.isBlocked ? '<div class="text-xs text-red-600 mt-1"><i class="fas fa-ban mr-1"></i>Blocked User</div>' : ''}
+                            ${u.verified ? '<div class="text-xs text-green-600 mt-1"><i class="fas fa-check-circle mr-1"></i>Verified</div>' : ''}
+                        </td>
+                        <td class="px-4 py-3">
+                            <div class="text-sm font-medium">${u.email}</div>
+                            <div class="mt-1">
+                                <span class="inline-block bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-mono password-field">
+                                    <i class="fas fa-lock mr-1"></i>${u.password ? '*'.repeat(8) : 'No password'}
+                                </span>
+                            </div>
+                        </td>
+                        <td class="px-4 py-3">
+                            ${hasResetRequest ? `
+                                <div class="text-xs text-yellow-600">
+                                    <i class="fas fa-exclamation-triangle mr-1"></i> Reset Requested
+                                </div>
+                                <div class="text-xs text-gray-500 mt-1">
+                                    ${new Date(u.resetRequest.timestamp).toLocaleString()}
+                                </div>
+                                <button onclick="processResetRequest('${u.resetRequest.requestId}', '${u.uid}', '${u.email}')" 
+                                        class="text-xs bg-blue-500 text-white px-2 py-1 rounded mt-2 hover:bg-blue-600">
+                                    Process
+                                </button>
+                            ` : '<span class="text-gray-400 text-xs">No requests</span>'}
+                        </td>
+                        <td class="px-4 py-3 space-y-1">
+                            <button onclick="viewUserPassword('${u.uid}')" 
+                                    class="text-blue-600 hover:underline text-sm font-medium block">
+                                <i class="fas fa-eye mr-1"></i>View Details
+                            </button>
+                            ${hasResetRequest ? `
+                            <button onclick="rejectResetRequest('${u.resetRequest.requestId}')" 
+                                    class="text-red-500 hover:underline text-sm font-medium block">
+                                Reject
+                            </button>
+                            ` : ''}
+                        </td>
+                    </tr>
+                `;
+                table.innerHTML += row;
+            });
+        }
+
+        function viewUserPassword(uid) {
+            db.ref('users/' + uid).once('value', snap => {
+                const user = snap.val();
+                if(!user) return;
+                
+                document.getElementById('modal-user-name').value = user.name || 'No Name';
+                document.getElementById('modal-user-email').value = user.email || 'No Email';
+                document.getElementById('modal-user-id').value = uid;
+                
+                let passwordText = 'Password not available';
+                if(user.password) {
+                    passwordText = user.password;
+                }
+                
+                document.getElementById('modal-user-password').value = passwordText;
+                
+                db.ref('password_reset_requests').orderByChild('userId').equalTo(uid).once('value', resetSnap => {
+                    const resetDiv = document.getElementById('reset-request-info');
+                    if(resetSnap.exists()) {
+                        resetSnap.forEach(resetChild => {
+                            const resetData = resetChild.val();
+                            if(resetData.status === 'pending') {
+                                document.getElementById('reset-request-details').textContent = 
+                                    `Requested on ${new Date(resetData.timestamp).toLocaleString()}`;
+                                resetDiv.classList.remove('hidden');
+                            } else {
+                                resetDiv.classList.add('hidden');
+                            }
+                        });
+                    } else {
+                        resetDiv.classList.add('hidden');
+                    }
+                });
+                
+                document.getElementById('password-modal').classList.remove('hidden');
+            });
+        }
+
+        function closePasswordModal() {
+            document.getElementById('password-modal').classList.add('hidden');
+        }
+
+        function copyPassword() {
+            const passwordField = document.getElementById('modal-user-password');
+            passwordField.select();
+            document.execCommand('copy');
+            alert('✅ Password copied to clipboard!');
+        }
+
+        function changeUserPassword() {
+            const uid = document.getElementById('modal-user-id').value;
+            const newPassword = prompt('Enter new password for user:');
+            
+            if(newPassword && newPassword.length >= 6) {
+                db.ref('users/' + uid).update({ password: newPassword })
+                    .then(() => {
+                        alert('✅ Password updated in database!');
+                        closePasswordModal();
+                        loadPasswords();
+                    });
+            } else if(newPassword) {
+                alert('Password must be at least 6 characters');
+            }
+        }
+
+        function processResetRequest(requestId, userId, userEmail) {
+            if(confirm(`Process password reset for ${userEmail}?`)) {
+                const tempPassword = Math.random().toString(36).slice(-8);
+                
+                db.ref('password_reset_requests/' + requestId).update({
+                    status: 'processed',
+                    processedBy: auth.currentUser.email,
+                    processedAt: Date.now(),
+                    tempPassword: tempPassword
+                }).then(() => {
+                    db.ref('users/' + userId).update({ password: tempPassword })
+                        .then(() => {
+                            alert(`✅ Password reset processed!\nTemporary password: ${tempPassword}`);
+                            loadPasswords();
+                        });
+                });
+            }
+        }
+
+        function rejectResetRequest(requestId) {
+            if(confirm('Reject this password reset request?')) {
+                db.ref('password_reset_requests/' + requestId).update({
+                    status: 'rejected',
+                    processedBy: auth.currentUser.email,
+                    processedAt: Date.now()
+                }).then(() => {
+                    alert('❌ Reset request rejected');
+                    loadPasswords();
+                });
+            }
+        }
+
+        function searchPasswords() {
+            const q = document.getElementById('password-search').value.toLowerCase();
+            const filtered = allUsersWithPasswords.filter(u => 
+                u.email?.toLowerCase().includes(q) ||
+                u.name?.toLowerCase().includes(q) ||
+                u.uid.toLowerCase().includes(q)
+            );
+            
+            const table = document.getElementById('passwords-table-body');
+            table.innerHTML = "";
+            
+            if(filtered.length === 0) {
+                table.innerHTML = `<tr><td colspan="4" class="p-10 text-center text-gray-500">No matching users found</td></tr>`;
+                return;
+            }
+            
+            filtered.forEach(u => {
+                const hasResetRequest = u.resetRequest && u.resetRequest.status === 'pending';
+                const row = `
+                    <tr class="border-b hover:bg-gray-50 transition ${hasResetRequest ? 'bg-yellow-50' : ''}">
+                        <td class="px-4 py-3">
+                            <div class="font-bold">${u.name || 'No Name'}</div>
+                            <div class="text-xs text-gray-500">UID: ${u.uid}</div>
+                        </td>
+                        <td class="px-4 py-3">
+                            <div class="text-sm font-medium">${u.email}</div>
+                            <div class="mt-1">
+                                <span class="inline-block bg-gray-100 text-gray-700 px-2 py-1 rounded text-xs font-mono">
+                                    <i class="fas fa-lock mr-1"></i>${u.password ? '*'.repeat(8) : 'No password'}
+                                </span>
+                            </div>
+                        </td>
+                        <td class="px-4 py-3">
+                            ${hasResetRequest ? `
+                                <div class="text-xs text-yellow-600">
+                                    <i class="fas fa-exclamation-triangle mr-1"></i> Reset Pending
+                                </div>
+                            ` : '<span class="text-gray-400 text-xs">No requests</span>'}
+                        </td>
+                        <td class="px-4 py-3">
+                            <button onclick="viewUserPassword('${u.uid}')" 
+                                    class="text-blue-600 hover:underline text-sm font-medium">
+                                <i class="fas fa-eye mr-1"></i>View
+                            </button>
+                        </td>
+                    </tr>
+                `;
+                table.innerHTML += row;
+            });
+        }
+
+        function filterPasswords() {
+            renderPasswordsTable();
+        }
+
+        // --- 9. CHARTS ---
+        function initCharts() {
+            // Earnings Chart
+            const earningsCtx = document.getElementById('earningsChart').getContext('2d');
+            new Chart(earningsCtx, {
+                type: 'line',
+                data: {
+                    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
+                    datasets: [{
+                        label: 'Coins Distributed',
+                        data: [12000, 19000, 15000, 25000, 22000, 30000, 45000],
+                        borderColor: '#3b82f6',
+                        backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                        fill: true,
+                        tension: 0.4,
+                        borderWidth: 2
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: { 
+                        legend: { display: false },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `Coins: ${context.parsed.y.toLocaleString()}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: { 
+                        y: { 
+                            beginAtZero: true,
+                            ticks: {
+                                callback: function(value) {
+                                    return value.toLocaleString();
+                                }
+                            }
+                        } 
+                    }
+                }
+            });
+
+            // Verification Chart
+            const verificationCtx = document.getElementById('verificationChart').getContext('2d');
+            new Chart(verificationCtx, {
+                type: 'doughnut',
+                data: {
+                    labels: ['Verified', 'Unverified'],
+                    datasets: [{
+                        data: [65, 35],
+                        backgroundColor: ['#10b981', '#f59e0b'],
+                        borderWidth: 2,
+                        borderColor: '#ffffff'
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    plugins: {
+                        legend: {
+                            position: 'bottom'
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    const label = context.label || '';
+                                    const value = context.parsed || 0;
+                                    const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                    const percentage = Math.round((value / total) * 100);
+                                    return `${label}: ${percentage}%`;
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+
+        // --- 10. TASK MANAGEMENT ---
+        let editingTaskId = null;
+        function openTaskModal(taskId = null) {
+            editingTaskId = taskId;
+            document.getElementById('task-modal').classList.remove('hidden');
+            if(!taskId) {
+                document.getElementById('modal-title').innerText = "Add New Task";
+                document.getElementById('task-title').value = "";
+                document.getElementById('task-url').value = "";
+                document.getElementById('task-reward').value = "20";
+                document.getElementById('task-timer').value = "30";
+                document.getElementById('task-type').value = "Web Visit";
+                document.getElementById('task-description').value = "";
+                document.getElementById('task-limit').value = "1";
+            } else {
+                document.getElementById('modal-title').innerText = "Edit Task";
+                db.ref('tasks/' + taskId).once('value').then(snap => {
+                    const task = snap.val();
+                    if(task) {
+                        document.getElementById('task-title').value = task.title || "";
+                        document.getElementById('task-url').value = task.url || "";
+                        document.getElementById('task-reward').value = task.reward || 20;
+                        document.getElementById('task-timer').value = task.timer || 30;
+                        document.getElementById('task-type').value = task.type || "Web Visit";
+                        document.getElementById('task-description').value = task.description || "";
+                        document.getElementById('task-limit').value = task.limit || 1;
+                    }
+                });
+            }
+        }
+
+        function closeTaskModal() {
+            document.getElementById('task-modal').classList.add('hidden');
+        }
+
+        function saveTask() {
+            const taskData = {
+                title: document.getElementById('task-title').value,
+                type: document.getElementById('task-type').value,
+                reward: parseInt(document.getElementById('task-reward').value),
+                timer: parseInt(document.getElementById('task-timer').value),
+                limit: parseInt(document.getElementById('task-limit').value),
+                url: document.getElementById('task-url').value,
+                description: document.getElementById('task-description').value,
+                status: 'enabled',
+                completedCount: 0,
+                updatedAt: Date.now()
+            };
+
+            if(!taskData.title || !taskData.url) {
+                alert("Please fill in title and URL");
+                return;
+            }
+
+            const ref = editingTaskId ? db.ref('tasks/' + editingTaskId) : db.ref('tasks').push();
+            
+            if(!editingTaskId) {
+                taskData.createdAt = Date.now();
+            }
+            
+            ref.set(taskData).then(() => {
+                closeTaskModal();
+                loadTasks();
+            });
+        }
+
+        function loadTasks() {
+            const container = document.getElementById('tasks-container');
+            container.innerHTML = "<div class='col-span-3 text-center py-8'><i class='fas fa-spinner fa-spin text-blue-500 mr-2'></i> Loading tasks...</div>";
+            db.ref('tasks').once('value', snap => {
+                container.innerHTML = "";
+                snap.forEach(child => {
+                    const t = child.val();
+                    const card = `
+                        <div class="bg-white p-4 rounded-xl shadow-sm border border-gray-100 hover:shadow-md transition-shadow">
+                            <div class="flex justify-between items-start mb-3">
+                                <span class="bg-blue-100 text-blue-700 text-[10px] font-bold px-2 py-1 rounded-lg uppercase">${t.type}</span>
+                                <span class="text-green-600 font-bold font-mono">${t.reward} Coins</span>
+                            </div>
+                            <h4 class="font-bold text-gray-800 mb-1">${t.title}</h4>
+                            <p class="text-xs text-gray-400 truncate mb-2">${t.description || ''}</p>
+                            <p class="text-xs text-blue-400 truncate mb-4">${t.url}</p>
+                            <div class="flex justify-between items-center text-xs text-gray-500 mb-4">
+                                <span><i class="fas fa-clock mr-1"></i> ${t.timer}s</span>
+                                <span><i class="fas fa-user-check mr-1"></i> ${t.completedCount || 0} hits</span>
+                                <span><i class="fas fa-repeat mr-1"></i> ${t.limit || 1}/user</span>
+                            </div>
+                            <div class="flex gap-2">
+                                <button onclick="openTaskModal('${child.key}')" class="flex-1 py-2 bg-blue-50 text-blue-600 rounded-lg text-sm hover:bg-blue-100"><i class="fas fa-edit"></i> Edit</button>
+                                <button onclick="deleteTask('${child.key}')" class="flex-1 py-2 bg-red-50 text-red-600 rounded-lg text-sm hover:bg-red-100"><i class="fas fa-trash"></i></button>
+                                <button onclick="toggleTaskStatus('${child.key}', '${t.status}')" class="flex-[2] py-2 border rounded-lg text-sm hover:bg-gray-50">
+                                    ${t.status === 'enabled' ? 'Disable' : 'Enable'}
+                                </button>
+                            </div>
+                        </div>
+                    `;
+                    container.innerHTML += card;
+                });
+            });
+        }
+
+        function deleteTask(id) {
+            if(confirm("Delete this task?")) db.ref('tasks/' + id).remove().then(() => loadTasks());
+        }
+
+        function toggleTaskStatus(id, current) {
+            const next = current === 'enabled' ? 'disabled' : 'enabled';
+            db.ref('tasks/' + id).update({ status: next }).then(() => loadTasks());
+        }
+
+        // --- 11. WITHDRAWAL MANAGEMENT ---
+        function loadWithdrawals() {
+            const filter = document.getElementById('withdraw-filter').value;
+            const table = document.getElementById('withdraw-table-body');
+            table.innerHTML = '<tr><td colspan="5" class="p-10 text-center"><i class="fas fa-spinner fa-spin text-blue-500 mr-2"></i> Loading withdrawals...</td></tr>';
+
+            let query = db.ref('withdrawals');
+            if(filter !== 'All') {
+                query = query.orderByChild('status').equalTo(filter);
+            }
+
+            query.once('value', snap => {
+                table.innerHTML = "";
+                
+                if(!snap.exists() || snap.numChildren() === 0) {
+                    table.innerHTML = '<tr><td colspan="5" class="p-10 text-center text-gray-500">No withdrawal requests found</td></tr>';
+                    return;
+                }
+
+                snap.forEach(child => {
+                    const w = child.val();
+                    const date = new Date(w.timestamp).toLocaleString();
+                    
+                    // Check if user is verified for withdrawal
+                    const isVerified = w.userVerified || false;
+                    const canWithdraw = isVerified ? 
+                        '<div class="text-xs text-green-600"><i class="fas fa-check-circle mr-1"></i>Verified User</div>' :
+                        '<div class="text-xs text-red-600"><i class="fas fa-times-circle mr-1"></i>Unverified User</div>';
+                    
+                    const row = `
+                        <tr class="border-b hover:bg-gray-50 transition">
+                            <td class="px-4 py-3 text-sm">
+                                <div class="font-bold">${w.userName}</div>
+                                ${canWithdraw}
+                                <div class="text-gray-400 text-[10px]">${date}</div>
+                            </td>
+                            <td class="px-4 py-3">
+                                <div class="font-bold text-blue-600">৳ ${w.amount}</div>
+                                <div class="text-xs uppercase">${w.method}</div>
+                            </td>
+                            <td class="px-4 py-3 font-mono text-sm">${w.number}</td>
+                            <td class="px-4 py-3">
+                                <span class="px-2 py-1 rounded text-[10px] font-bold ${w.status === 'Pending' ? 'bg-yellow-100 text-yellow-700' : (w.status === 'Approved' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700')}">
+                                    ${w.status}
+                                </span>
+                                ${w.processedAt ? `
+                                    <div class="text-xs text-gray-500 mt-1">
+                                        ${new Date(w.processedAt).toLocaleDateString()}
+                                    </div>
+                                ` : ''}
+                            </td>
+                            <td class="px-4 py-3 text-center">
+                                ${w.status === 'Pending' ? `
+                                    <div class="flex flex-col gap-1">
+                                        <button onclick="updateWithdraw('${child.key}', 'Approved')" class="bg-green-500 text-white px-3 py-1 rounded text-xs hover:bg-green-600">Approve</button>
+                                        <button onclick="updateWithdraw('${child.key}', 'Rejected')" class="bg-red-500 text-white px-3 py-1 rounded text-xs hover:bg-red-600">Reject</button>
+                                    </div>
+                                ` : '<span class="text-gray-400 text-xs">Processed</span>'}
+                            </td>
+                        </tr>
+                    `;
+                    table.innerHTML += row;
+                });
+            });
+        }
+
+        function updateWithdraw(id, status) {
+            if(!confirm(`Mark as ${status}?`)) return;
+            
+            db.ref('withdrawals/' + id).once('value', snap => {
+                const w = snap.val();
+                
+                // Check if user is verified if trying to approve
+                if(status === 'Approved') {
+                    db.ref('users/' + w.userId).once('value', userSnap => {
+                        const user = userSnap.val();
+                        db.ref('settings/verification').once('value', settingsSnap => {
+                            const verificationSettings = settingsSnap.val() || {};
+                            
+                            if(verificationSettings.mandatory && user && !user.verified) {
+                                alert('❌ Cannot approve withdrawal! User is not verified.');
+                                return;
+                            }
+                            proceedWithUpdate(id, status, w);
+                        });
+                    });
+                } else {
+                    proceedWithUpdate(id, status, w);
+                }
+            });
+        }
+
+        function proceedWithUpdate(id, status, withdrawal) {
+            if(status === 'Rejected') {
+                const coinRate = 20; // Default rate
+                const coinsToRefund = withdrawal.amount * coinRate;
+                db.ref('users/' + withdrawal.userId + '/coins').transaction(current => (current || 0) + coinsToRefund);
+            }
+            
+            db.ref('withdrawals/' + id).update({ 
+                status: status,
+                processedAt: Date.now(),
+                processedBy: auth.currentUser.email
+            }).then(() => {
+                alert(`✅ Withdrawal ${status.toLowerCase()}!`);
+                loadWithdrawals();
+            });
+        }
+
+        // --- 12. VERIFICATION SETTINGS ---
+        let verificationSettings = {
+            fee: 50,
+            paymentMethod: 'bKash',
+            paymentNumber: '01XXXXXXXXX',
+            mandatory: true,
+            enabled: true
+        };
+
+        // Load verification settings on startup
+        function loadVerificationSettings() {
+            db.ref('settings/verification').once('value', snap => {
+                if(snap.exists()) {
+                    verificationSettings = snap.val();
+                }
+            });
+        }
+
+        // Call this on initialization
+        loadVerificationSettings();
+
+        // --- 13. OTHER SETTINGS ---
+        function fetchSettings() {
+            db.ref('settings/global').once('value', snap => {
+                const s = snap.val() || {};
+                document.getElementById('set-coin-rate').value = s.coinRate || 20;
+                document.getElementById('set-daily-limit').value = s.dailyLimit || 20;
+                document.getElementById('set-min-withdraw').value = s.minWithdraw || 100;
+                document.getElementById('set-vpn-block').checked = s.vpnBlock || false;
+                document.getElementById('set-ip-limit').value = s.ipLimit || 5;
+                document.getElementById('set-ref-comm').value = s.referralPercentage || 10;
+                document.getElementById('set-ref-bonus').value = s.referralBonus || 50;
+            });
+        }
+
+        function saveSettings() {
+            const data = {
+                coinRate: parseInt(document.getElementById('set-coin-rate').value),
+                dailyLimit: parseInt(document.getElementById('set-daily-limit').value),
+                minWithdraw: parseInt(document.getElementById('set-min-withdraw').value),
+                vpnBlock: document.getElementById('set-vpn-block').checked,
+                ipLimit: parseInt(document.getElementById('set-ip-limit').value),
+                referralPercentage: parseInt(document.getElementById('set-ref-comm').value),
+                referralBonus: parseInt(document.getElementById('set-ref-bonus').value),
+                updatedAt: Date.now(),
+                updatedBy: auth.currentUser.email
+            };
+            db.ref('settings/global').set(data).then(() => alert("✅ Settings saved!"));
+        }
+
+        function fetchSupportSettings() {
+            db.ref('settings/support').once('value', snap => {
+                const s = snap.val() || {};
+                document.getElementById('support-link').value = s.supportLink || '';
+                document.getElementById('support-email').value = s.supportEmail || '';
+                document.getElementById('support-whatsapp').value = s.whatsapp || '';
+                document.getElementById('support-telegram').value = s.telegram || '';
+                document.getElementById('support-facebook').value = s.facebook || '';
+                document.getElementById('reset-email').value = s.resetEmail || '';
+                document.getElementById('auto-email-reset').checked = s.autoEmailReset || false;
+                document.getElementById('show-plain-passwords').checked = s.showPlainPasswords || false;
+                document.getElementById('password-strength').value = s.passwordStrength || 'medium';
+            });
+        }
+
+        function saveSupportSettings() {
+            const supportLink = document.getElementById('support-link').value;
+            
+            const data = {
+                supportLink: supportLink,
+                supportEmail: document.getElementById('support-email').value,
+                whatsapp: document.getElementById('support-whatsapp').value,
+                telegram: document.getElementById('support-telegram').value,
+                facebook: document.getElementById('support-facebook').value,
+                resetEmail: document.getElementById('reset-email').value,
+                autoEmailReset: document.getElementById('auto-email-reset').checked,
+                showPlainPasswords: document.getElementById('show-plain-passwords').checked,
+                passwordStrength: document.getElementById('password-strength').value,
+                updatedAt: Date.now(),
+                updatedBy: auth.currentUser.email
+            };
+            
+            db.ref('settings/support_link').set(supportLink);
+            
+            db.ref('settings/support').set(data)
+                .then(() => alert("✅ Support settings saved successfully!"))
+                .catch(error => alert("❌ Error saving settings: " + error.message));
+        }
+
+        function fetchNotices() {
+            db.ref('notices/current').once('value', snap => {
+                const n = snap.val() || {};
+                document.getElementById('notice-text').value = n.text || "";
+                document.getElementById('notice-active').checked = n.active || false;
+                document.getElementById('notice-emergency').checked = n.emergency || false;
+            });
+        }
+
+        function updateNotice() {
+            const data = {
+                text: document.getElementById('notice-text').value,
+                active: document.getElementById('notice-active').checked,
+                emergency: document.getElementById('notice-emergency').checked,
+                timestamp: Date.now(),
+                updatedBy: auth.currentUser.email
+            };
+            db.ref('notices/current').set(data).then(() => alert("✅ Notice published!"));
+        }
+
+        // --- 14. SLIDER MANAGEMENT ---
+        let editingSliderId = null;
+        let currentSliderItems = [];
+
+        function openSliderModal(sliderId = null) {
+            editingSliderId = sliderId;
+            document.getElementById('slider-modal').classList.remove('hidden');
+            
+            if(!sliderId) {
+                document.getElementById('slider-modal-title').innerText = "Add New Slide";
+                document.getElementById('slider-title').value = "";
+                document.getElementById('slider-description').value = "";
+                document.getElementById('slider-button-text').value = "Learn More";
+                document.getElementById('slider-button-link').value = "#";
+                document.getElementById('slider-image-url').value = "";
+                document.getElementById('slider-image-preview').classList.add('hidden');
+                document.getElementById('slider-active').checked = true;
+                document.getElementById('slider-order-display').textContent = "Auto";
+            } else {
+                document.getElementById('slider-modal-title').innerText = "Edit Slide";
+                db.ref('slider/' + sliderId).once('value').then(snap => {
+                    const slide = snap.val();
+                    if(slide) {
+                        document.getElementById('slider-title').value = slide.title || "";
+                        document.getElementById('slider-description').value = slide.description || "";
+                        document.getElementById('slider-button-text').value = slide.buttonText || "Learn More";
+                        document.getElementById('slider-button-link').value = slide.buttonLink || "#";
+                        document.getElementById('slider-image-url').value = slide.imageUrl || "";
+                        document.getElementById('slider-active').checked = slide.active !== false;
+                        document.getElementById('slider-order-display').textContent = slide.order || "Auto";
+                        
+                        if(slide.imageUrl) {
+                            const preview = document.getElementById('slider-image-preview');
+                            preview.src = slide.imageUrl;
+                            preview.classList.remove('hidden');
+                        }
+                    }
+                });
+            }
+        }
+
+        function closeSliderModal() {
+            document.getElementById('slider-modal').classList.add('hidden');
+            editingSliderId = null;
+        }
+
+        function setSampleImage(num) {
+            const sampleImages = [
+                "https://images.unsplash.com/photo-1551288049-bebda4e38f71?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&h=400&q=80",
+                "https://images.unsplash.com/photo-1554224155-8d04cb21cd6c?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&h=400&q=80",
+                "https://images.unsplash.com/photo-1604594849809-dfedbc827105?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&h=400&q=80"
+            ];
+            
+            const url = sampleImages[num - 1];
+            document.getElementById('slider-image-url').value = url;
+            
+            const preview = document.getElementById('slider-image-preview');
+            preview.src = url;
+            preview.classList.remove('hidden');
+        }
+
+        function saveSlider() {
+            const slideData = {
+                title: document.getElementById('slider-title').value,
+                description: document.getElementById('slider-description').value,
+                buttonText: document.getElementById('slider-button-text').value,
+                buttonLink: document.getElementById('slider-button-link').value,
+                imageUrl: document.getElementById('slider-image-url').value,
+                active: document.getElementById('slider-active').checked,
+                updatedAt: Date.now(),
+                updatedBy: auth.currentUser.email
+            };
+
+            if(!slideData.title || !slideData.imageUrl) {
+                alert("Please fill in title and image URL");
+                return;
+            }
+
+            const ref = editingSliderId ? db.ref('slider/' + editingSliderId) : db.ref('slider').push();
+            
+            if(!editingSliderId) {
+                db.ref('slider').once('value').then(snap => {
+                    slideData.order = snap.numChildren();
+                    slideData.createdAt = Date.now();
+                    ref.set(slideData).then(() => {
+                        closeSliderModal();
+                        loadSliderItems();
+                    });
+                });
+            } else {
+                ref.update(slideData).then(() => {
+                    closeSliderModal();
+                    loadSliderItems();
+                });
+            }
+        }
+
+        function loadSliderItems() {
+            const container = document.getElementById('slider-container');
+            container.innerHTML = '<div class="text-center py-8"><i class="fas fa-spinner fa-spin text-blue-500 mr-2"></i> Loading slides...</div>';
+            
+            db.ref('slider').orderByChild('order').once('value').then(snap => {
+                container.innerHTML = "";
+                currentSliderItems = [];
+                
+                if(!snap.exists() || snap.numChildren() === 0) {
+                    container.innerHTML = '<div class="text-center py-8 text-gray-400">No slides added yet. Click "Add New Slide" to get started.</div>';
+                    document.getElementById('active-slider-count').textContent = "0";
+                    return;
+                }
+                
+                snap.forEach(child => {
+                    const slide = child.val();
+                    slide.id = child.key;
+                    currentSliderItems.push(slide);
+                    renderSliderItem(slide);
+                });
+                
+                new Sortable(container, {
+                    animation: 150,
+                    handle: '.drag-handle',
+                    onEnd: function(evt) {
+                        updateSliderOrder();
+                    }
+                });
+                
+                updateActiveCount();
+                previewSlider();
+            });
+        }
+
+        function renderSliderItem(slide) {
+            const container = document.getElementById('slider-container');
+            const emptyMsg = document.getElementById('empty-slider-message');
+            if(emptyMsg) emptyMsg.remove();
+            
+            const item = document.createElement('div');
+            item.className = `flex items-center gap-4 p-4 border rounded-lg sortable-item ${slide.active ? 'bg-white' : 'bg-gray-50 opacity-75'}`;
+            item.id = `slider-item-${slide.id}`;
+            item.innerHTML = `
+                <div class="drag-handle cursor-move p-2 text-gray-400">
+                    <i class="fas fa-grip-vertical"></i>
+                </div>
+                <div class="flex-1">
+                    <div class="flex items-start justify-between">
+                        <div>
+                            <h4 class="font-semibold ${slide.active ? 'text-gray-800' : 'text-gray-500'}">${slide.title}</h4>
+                            <p class="text-sm text-gray-600 truncate">${slide.description || 'No description'}</p>
+                            <div class="flex items-center gap-3 mt-2 text-xs">
+                                <span class="text-blue-600">Order: ${slide.order || 0}</span>
+                                <span class="text-gray-500">${new Date(slide.updatedAt || slide.createdAt).toLocaleDateString()}</span>
+                        </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="px-2 py-1 text-xs rounded ${slide.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}">
+                                ${slide.active ? 'Active' : 'Inactive'}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="mt-3 flex items-center justify-between">
+                        <div class="text-xs text-gray-500">
+                            <i class="fas fa-link mr-1"></i>${slide.buttonLink || 'No link'}
+                        </div>
+                        <div class="flex gap-2">
+                            <button onclick="toggleSliderActive('${slide.id}', ${slide.active})" class="text-xs px-3 py-1 rounded ${slide.active ? 'bg-yellow-100 text-yellow-700' : 'bg-green-100 text-green-700'}">
+                                ${slide.active ? 'Deactivate' : 'Activate'}
+                            </button>
+                            <button onclick="openSliderModal('${slide.id}')" class="text-xs px-3 py-1 bg-blue-100 text-blue-700 rounded">Edit</button>
+                            <button onclick="deleteSliderItem('${slide.id}')" class="text-xs px-3 py-1 bg-red-100 text-red-700 rounded">Delete</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            container.appendChild(item);
+        }
+
+        function updateSliderOrder() {
+            const items = document.querySelectorAll('#slider-container > div');
+            items.forEach((item, index) => {
+                const id = item.id.replace('slider-item-', '');
+                if(id) {
+                    db.ref('slider/' + id).update({ order: index });
+                }
+            });
+            
+            setTimeout(() => loadSliderItems(), 300);
+        }
+
+        function toggleSliderActive(id, currentActive) {
+            db.ref('slider/' + id).update({ 
+                active: !currentActive,
+                updatedAt: Date.now(),
+                updatedBy: auth.currentUser.email
+            }).then(() => {
+                loadSliderItems();
+            });
+        }
+
+        function deleteSliderItem(id) {
+            if(confirm("Are you sure you want to delete this slide?")) {
+                db.ref('slider/' + id).remove().then(() => {
+                    loadSliderItems();
+                });
+            }
+        }
+
+        function updateActiveCount() {
+            const activeCount = currentSliderItems.filter(slide => slide.active).length;
+            document.getElementById('active-slider-count').textContent = activeCount;
+        }
+
+        function previewSlider() {
+            const previewContainer = document.getElementById('slider-preview');
+            const dotsContainer = document.getElementById('slider-preview-dots');
+            
+            previewContainer.innerHTML = '';
+            dotsContainer.innerHTML = '';
+            
+            const activeSlides = currentSliderItems
+                .filter(slide => slide.active)
+                .sort((a, b) => (a.order || 0) - (b.order || 0));
+            
+            if(activeSlides.length === 0) {
+                previewContainer.innerHTML = '<div class="w-full h-full flex items-center justify-center text-gray-400">No active slides to preview</div>';
+                return;
+            }
+            
+            activeSlides.forEach((slide, index) => {
+                const slideDiv = document.createElement('div');
+                slideDiv.className = 'min-w-full h-full relative';
+                slideDiv.innerHTML = `
+                    <img src="${slide.imageUrl}" class="w-full h-full object-cover" alt="${slide.title}">
+                    <div class="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent flex items-end p-4">
+                        <div>
+                            <h4 class="text-white font-bold">${slide.title}</h4>
+                            <p class="text-white/80 text-sm">${slide.description || ''}</p>
+                        </div>
+                    </div>
+                `;
+                previewContainer.appendChild(slideDiv);
+                
+                const dot = document.createElement('div');
+                dot.className = `w-2 h-2 rounded-full ${index === 0 ? 'bg-white' : 'bg-white/50'}`;
+                dotsContainer.appendChild(dot);
+            });
+        }
+
+        function loadSliderSettings() {
+            db.ref('slider_settings').once('value').then(snap => {
+                const settings = snap.val() || {};
+                document.getElementById('slider-interval').value = settings.interval || 4;
+                document.getElementById('slider-auto-play').checked = settings.autoPlay !== false;
+                document.getElementById('slider-show-dots').checked = settings.showDots !== false;
+                document.getElementById('slider-show-arrows').checked = settings.showArrows !== false;
+            });
+        }
+
+        function saveSliderSettings() {
+            const settings = {
+                interval: parseInt(document.getElementById('slider-interval').value),
+                autoPlay: document.getElementById('slider-auto-play').checked,
+                showDots: document.getElementById('slider-show-dots').checked,
+                showArrows: document.getElementById('slider-show-arrows').checked,
+                updatedAt: Date.now(),
+                updatedBy: auth.currentUser.email
+            };
+            
+            db.ref('slider_settings').set(settings).then(() => {
+                alert("✅ Slider settings saved successfully!");
+            });
+        }
+
+        // --- 15. PAYMENT METHODS ---
+        let editingPaymentId = null;
+
+        function openPaymentModal(paymentId = null) {
+            editingPaymentId = paymentId;
+            document.getElementById('payment-modal').classList.remove('hidden');
+            
+            if(!paymentId) {
+                document.getElementById('payment-modal-title').innerText = "Add Payment Method";
+                document.getElementById('payment-name').value = "";
+                document.getElementById('payment-icon').value = "";
+                document.getElementById('payment-order').value = 1;
+                document.getElementById('payment-active').checked = true;
+            } else {
+                document.getElementById('payment-modal-title').innerText = "Edit Payment Method";
+                db.ref('payment_methods/' + paymentId).once('value').then(snap => {
+                    const method = snap.val();
+                    if(method) {
+                        document.getElementById('payment-name').value = method.name || "";
+                        document.getElementById('payment-icon').value = method.icon || "";
+                        document.getElementById('payment-order').value = method.order || 1;
+                        document.getElementById('payment-active').checked = method.active !== false;
+                    }
+                });
+            }
+        }
+
+        function closePaymentModal() {
+            document.getElementById('payment-modal').classList.add('hidden');
+            editingPaymentId = null;
+        }
+
+        function setPaymentIcon(type) {
+            const iconUrls = {
+                'bKash': 'https://firebasestorage.googleapis.com/v0/b/image-to-link-6621c.appspot.com/o/storage%2Fdata%2F1000777640.jpg?alt=media&token=1e020a19-3196-4bb2-85a9-21a39eaa96e4',
+                'Nagad': 'https://firebasestorage.googleapis.com/v0/b/image-to-link-6621c.appspot.com/o/storage%2Fdata%2F1000777935.jpg?alt=media&token=5c1691fb-4e12-4def-b94a-fc646a5c3124',
+                'Rocket': 'https://firebasestorage.googleapis.com/v0/b/image-to-link-6621c.appspot.com/o/storage%2Fdata%2F1000777936.jpg?alt=media&token=8058bf24-498a-4147-a4e4-dd1d8d488c7c'
+            };
+            
+            document.getElementById('payment-name').value = type;
+            document.getElementById('payment-icon').value = iconUrls[type] || "";
+        }
+
+        function savePaymentMethod() {
+            const paymentData = {
+                name: document.getElementById('payment-name').value,
+                icon: document.getElementById('payment-icon').value,
+                order: parseInt(document.getElementById('payment-order').value),
+                active: document.getElementById('payment-active').checked,
+                updatedAt: Date.now()
+            };
+
+            if(!paymentData.name) {
+                alert("Please fill in payment method name");
+                return;
+            }
+
+            const ref = editingPaymentId ? db.ref('payment_methods/' + editingPaymentId) : db.ref('payment_methods').push();
+            
+            if(!editingPaymentId) {
+                paymentData.createdAt = Date.now();
+            }
+            
+            ref.set(paymentData).then(() => {
+                closePaymentModal();
+                loadPaymentMethods();
+            });
+        }
+
+        function loadPaymentMethods() {
+            const container = document.getElementById('payment-methods-list');
+            container.innerHTML = '<div class="text-center py-4"><i class="fas fa-spinner fa-spin text-blue-500 mr-2"></i> Loading payment methods...</div>';
+            
+            db.ref('payment_methods').orderByChild('order').once('value').then(snap => {
+                container.innerHTML = "";
+                
+                if(!snap.exists() || snap.numChildren() === 0) {
+                    container.innerHTML = '<p class="text-gray-500 text-center py-4">No payment methods added yet.</p>';
+                    return;
+                }
+                
+                snap.forEach(child => {
+                    const method = child.val();
+                    const methodElement = document.createElement('div');
+                    methodElement.className = `flex items-center justify-between p-3 border rounded-lg ${method.active ? 'bg-white' : 'bg-gray-50'}`;
+                    
+                    methodElement.innerHTML = `
+                        <div class="flex items-center">
+                            <img src="${method.icon || 'https://via.placeholder.com/40'}" class="w-10 h-10 rounded-lg object-cover mr-3">
+                            <div>
+                                <div class="font-semibold ${method.active ? 'text-gray-800' : 'text-gray-500'}">${method.name}</div>
+                                <div class="text-xs text-gray-500">Order: ${method.order || 1}</div>
+                            </div>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="px-2 py-1 text-xs rounded ${method.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-700'}">
+                                ${method.active ? 'Active' : 'Inactive'}
+                            </span>
+                            <button onclick="openPaymentModal('${child.key}')" class="text-blue-600 hover:text-blue-800">
+                                <i class="fas fa-edit"></i>
+                            </button>
+                            <button onclick="deletePaymentMethod('${child.key}')" class="text-red-600 hover:text-red-800">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </div>
+                    `;
+                    
+                    container.appendChild(methodElement);
+                });
+            });
+        }
+
+        function deletePaymentMethod(id) {
+            if(confirm("Are you sure you want to delete this payment method?")) {
+                db.ref('payment_methods/' + id).remove().then(() => {
+                    loadPaymentMethods();
+                });
+            }
+        }
+
+        function savePaymentSettings() {
+            const settings = {
+                enableAllPayments: document.getElementById('enable-all-payments').checked,
+                defaultPayment: document.getElementById('default-payment').value,
+                showPaymentOrder: document.getElementById('show-payment-order').checked,
+                updatedAt: Date.now(),
+                updatedBy: auth.currentUser.email
+            };
+            
+            db.ref('settings/payment').set(settings).then(() => {
+                alert("✅ Payment settings saved successfully!");
+            });
+        }
+
+        // --- 16. INITIALIZE ---
+        document.addEventListener('DOMContentLoaded', function() {
+            // Check if user is already logged in
+            auth.onAuthStateChanged((user) => {
+                if (user) {
+                    db.ref('admins/' + user.uid).once('value', (snapshot) => {
+                        if(snapshot.exists()) initDashboard();
+                    });
+                }
+            });
+            
+            // Initialize charts
+            initCharts();
+            
+            // Load verification settings
+            loadVerificationSettings();
+            
+            // Add event listener for delete confirmation checkbox
+            document.getElementById('delete-confirm').addEventListener('change', function() {
+                document.getElementById('confirm-delete-btn').disabled = !this.checked;
+            });
+            
+            // Mobile menu toggle
+            document.getElementById('mobile-menu-btn').addEventListener('click', function() {
+                document.getElementById('sidebar').classList.toggle('active');
+            });
+            
+            // Close sidebar when clicking outside on mobile
+            document.addEventListener('click', function(event) {
+                const sidebar = document.getElementById('sidebar');
+                const menuBtn = document.getElementById('mobile-menu-btn');
+                if (window.innerWidth <= 768 && 
+                    sidebar.classList.contains('active') && 
+                    !sidebar.contains(event.target) && 
+                    !menuBtn.contains(event.target)) {
+                    sidebar.classList.remove('active');
+                }
+            });
+        });
+    </script>
+</body>
+</html>
